@@ -1,4 +1,4 @@
-use std::{fs, error::Error};
+use std::fs;
 
 use clap::{Parser, Subcommand};
 
@@ -22,21 +22,8 @@ fn main() -> Result<(), String> {
 
     match &cli.cmd {
         Command::Validate { path } => {
-            let input = fs::read_to_string(path);
-
-            match input {
-                Err(err) => return Err(err.to_string()),
-                Ok(content) => {
-                    let result = markdown::to_mdast(&content, &markdown::ParseOptions::default());
-
-                    match result {
-                        Ok(_) => println!("Validated successfully."),
-                        Err(err) => println!("{}", err),
-                    }
-                }
-            }
-
-
+            let input = fs::read_to_string(path).map_err(|_| "File not found")?;
+            let _ = markdown::to_mdast(&input, &markdown::ParseOptions::default());
         },
     }
 
