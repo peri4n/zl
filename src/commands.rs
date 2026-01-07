@@ -11,6 +11,10 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Prints the current configuration to stdout
     Config,
+    /// Initializes a zettelkasten directory
+    Init {
+        path: Option<String>,
+    },
     /// Checks if a markdown file can be parsed correctly
     Parse {
         /// Path of the markdown file to validate
