@@ -1,7 +1,7 @@
 mod commands;
 mod config;
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{fs, path::{Path, PathBuf}, sync::LazyLock};
 
 use clap::Parser;
 use markdown::{ParseOptions, to_mdast};
@@ -10,21 +10,16 @@ use tera::{Context, Tera};
 use crate::config::Config;
 use crate::commands::{Cli, Command};
 
-#[macro_use]
-extern crate lazy_static;
-
-lazy_static! {
-    pub static ref TEMPLATES: Tera = {
-        let tera = match Tera::new(".zl/templates/**/*") {
-            Ok(t) => t,
-            Err(e) => {
-                println!("Parsing error(s): {}", e);
-                ::std::process::exit(1);
-            }
-        };
-        tera
+const TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
+    let tera = match Tera::new(".zl/templates/**/*") {
+        Ok(t) => t,
+        Err(e) => {
+            println!("Parsing error(s): {}", e);
+            ::std::process::exit(1);
+        }
     };
-}
+    tera
+});
 
 fn main() -> Result<(), String> {
     let cli = Cli::parse();
@@ -60,7 +55,6 @@ fn main() -> Result<(), String> {
                         continue;
                     }
 
-                    println!("Trying to reade file: {}", file.display());
                     let input = fs::read_to_string(file).map_err(|_| "File not found")?;
                     let _ = to_mdast(&input, &parse_options).expect("Failed to parse markdown");
 
