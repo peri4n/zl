@@ -1,6 +1,8 @@
 mod commands;
 mod config;
+mod index;
 mod notes;
+mod paths;
 
 use anyhow::Context;
 use clap::Parser;

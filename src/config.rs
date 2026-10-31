@@ -1,8 +1,10 @@
-use std::{collections::BTreeMap, fs, path::{Component, Path, PathBuf}};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use anyhow::{Context, anyhow, bail};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
+
+use crate::paths::normalize;
 
 /// Name of the directory holding the zettelkasten configuration and templates
 pub(crate) const CONFIG_DIR: &str = ".zl";
@@ -193,11 +195,4 @@ fn build_matcher(paths: &[String]) -> anyhow::Result<GlobSet> {
     }
 
     Ok(builder.build()?)
-}
-
-/// Drops `.` components so that `./journal/a.md` and `journal/a.md` are matched the same way
-fn normalize(path: &Path) -> PathBuf {
-    path.components()
-        .filter(|c| !matches!(c, Component::CurDir))
-        .collect()
 }
