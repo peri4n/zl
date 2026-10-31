@@ -2,25 +2,39 @@ use std::{collections::HashMap, fs, path::{Path, PathBuf}};
 
 use anyhow::{Context, anyhow, bail};
 use markdown::{Constructs, ParseOptions, mdast::Node, to_mdast};
+use percent_encoding::percent_decode_str;
 use serde::Deserialize;
+
+use crate::paths::normalize;
 
 /// Metadata of a note, taken from its frontmatter and content
 #[derive(Debug)]
 pub(crate) struct Note {
+    /// Path relative to the notebook root
     pub(crate) path: PathBuf,
     /// Frontmatter `title`, otherwise the first level 1 heading, otherwise the file name
     pub(crate) title: String,
     /// Frontmatter `tags`
     pub(crate) tags: Vec<String>,
-    /// Targets of all links in the note: markdown links and autolinks
-    pub(crate) links: Vec<String>,
+    /// All links in the note: markdown links and autolinks
+    pub(crate) links: Vec<Link>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Link {
+    /// Target as written, e.g. `../a.md#intro`
+    pub(crate) url: String,
+    pub(crate) line: usize,
+    /// Path of the linked note relative to the notebook root, `None` for links to anything else
+    pub(crate) target: Option<PathBuf>,
 }
 
 impl Note {
-    /// Reads and parses the note, failing on unreadable files and invalid frontmatter.
-    /// Errors don't mention `path`, callers are expected to report it.
+    /// Reads and parses the note at `path`, relative to the notebook root. Fails on unreadable files and
+    /// invalid frontmatter, errors don't mention `path`, callers are expected to report it.
     pub(crate) fn load(path: &Path, parse_options: &ParseOptions) -> anyhow::Result<Self> {
-        let input = fs::read_to_string(path).context("Failed to read file")?;
+        let path = normalize(path);
+        let input = fs::read_to_string(&path).context("Failed to read file")?;
         let ast = to_mdast(&input, parse_options).map_err(|e| anyhow!("Failed to parse markdown: {}", e))?;
 
         let frontmatter = Frontmatter::from_ast(&ast).context("Invalid frontmatter")?;
@@ -30,10 +44,10 @@ impl Note {
             .unwrap_or_else(|| path.file_stem().unwrap_or_default().to_string_lossy().into_owned());
 
         Ok(Note {
-            path: path.to_path_buf(),
+            links: links(&ast, &path),
+            path,
             title,
             tags: frontmatter.tags.map(Tags::into_vec).unwrap_or_default(),
-            links: links(&ast),
         })
     }
 }
@@ -81,9 +95,9 @@ impl Tags {
     }
 }
 
-/// Link targets in document order. Reference links (`[text][ref]`) are resolved to the URL of their
-/// definition, code is skipped as markdown doesn't parse links in it.
-fn links(ast: &Node) -> Vec<String> {
+/// Links in document order. Reference links (`[text][ref]`) use the URL of their definition,
+/// code is skipped as markdown doesn't parse links in it.
+fn links(ast: &Node, note_path: &Path) -> Vec<Link> {
     let mut definitions = HashMap::new();
     walk(ast, &mut |node| {
         if let Node::Definition(definition) = node {
@@ -92,15 +106,51 @@ fn links(ast: &Node) -> Vec<String> {
     });
 
     let mut links = Vec::new();
-    walk(ast, &mut |node| match node {
-        Node::Link(link) => links.push(link.url.clone()),
-        Node::LinkReference(reference) => {
-            links.extend(definitions.get(&reference.identifier).cloned());
+    walk(ast, &mut |node| {
+        let url = match node {
+            Node::Link(link) => Some(&link.url),
+            Node::LinkReference(reference) => definitions.get(&reference.identifier),
+            _ => None,
+        };
+
+        if let Some(url) = url {
+            links.push(Link {
+                url: url.clone(),
+                line: node.position().map_or(0, |position| position.start.line),
+                target: resolve_link(note_path, url),
+            });
         }
-        _ => {}
     });
 
     links
+}
+
+/// Path of the note `url` links to, relative to the notebook root, or `None` if it links to anything
+/// else than a markdown file. Relative URLs are resolved against the folder of `note_path`, URLs
+/// starting with `/` against the notebook root.
+pub(crate) fn resolve_link(note_path: &Path, url: &str) -> Option<PathBuf> {
+    if has_scheme(url) {
+        return None;
+    }
+
+    let path = url.split(['#', '?']).next().filter(|path| !path.is_empty())?;
+    let path = percent_decode_str(path).decode_utf8().ok()?;
+
+    let target = match path.strip_prefix('/') {
+        Some(from_root) => PathBuf::from(from_root),
+        None => note_path.parent().unwrap_or(Path::new("")).join(path.as_ref()),
+    };
+    let target = normalize(&target);
+
+    target.extension().is_some_and(|ext| ext == "md").then_some(target)
+}
+
+/// Whether `url` starts with a URI scheme like `https:` or `mailto:`
+fn has_scheme(url: &str) -> bool {
+    url.split_once(':').is_some_and(|(scheme, _)| {
+        scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+            && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+    })
 }
 
 fn walk<'a>(node: &'a Node, visit: &mut impl FnMut(&'a Node)) {
@@ -126,18 +176,6 @@ pub(crate) fn parse_options() -> ParseOptions {
         },
         ..ParseOptions::gfm()
     }
-}
-
-/// Loads all notes below `path`. Broken notes are skipped with a warning on stderr,
-/// so a single one doesn't hide all others.
-pub(crate) fn load_all(path: &Path) -> anyhow::Result<impl Iterator<Item = Note>> {
-    let parse_options = parse_options();
-
-    Ok(collect(path)?.into_iter().filter_map(move |file| {
-        Note::load(&file, &parse_options)
-            .inspect_err(|e| eprintln!("warning: skipping {}: {:#}", file.display(), e))
-            .ok()
-    }))
 }
 
 /// Returns `path` itself if it is a file, otherwise all markdown files below it
@@ -175,4 +213,39 @@ fn markdown_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     files.sort();
 
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resolve(note: &str, url: &str) -> Option<PathBuf> {
+        resolve_link(Path::new(note), url)
+    }
+
+    #[test]
+    fn resolves_relative_links() {
+        assert_eq!(resolve("a.md", "b.md"), Some("b.md".into()));
+        assert_eq!(resolve("dir/a.md", "b.md"), Some("dir/b.md".into()));
+        assert_eq!(resolve("dir/a.md", "./sub/b.md"), Some("dir/sub/b.md".into()));
+        assert_eq!(resolve("dir/a.md", "../b.md"), Some("b.md".into()));
+        assert_eq!(resolve("dir/a.md", "/other/b.md"), Some("other/b.md".into()));
+    }
+
+    #[test]
+    fn strips_anchors_and_decodes() {
+        assert_eq!(resolve("a.md", "b.md#intro"), Some("b.md".into()));
+        assert_eq!(resolve("a.md", "b.md?x=1"), Some("b.md".into()));
+        assert_eq!(resolve("a.md", "note%20one.md"), Some("note one.md".into()));
+        assert_eq!(resolve("a.md", "my note.md"), Some("my note.md".into()));
+    }
+
+    #[test]
+    fn ignores_everything_but_notes() {
+        assert_eq!(resolve("a.md", "https://example.com/b.md"), None);
+        assert_eq!(resolve("a.md", "mailto:me@example.com"), None);
+        assert_eq!(resolve("a.md", "#section"), None);
+        assert_eq!(resolve("a.md", "image.png"), None);
+        assert_eq!(resolve("a.md", ""), None);
+    }
 }

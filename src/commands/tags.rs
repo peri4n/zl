@@ -2,7 +2,7 @@ use std::{cmp::Reverse, collections::BTreeMap, path::Path};
 
 use clap::ValueEnum;
 
-use crate::notes;
+use crate::index::Index;
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Sort {
@@ -22,7 +22,10 @@ pub(crate) fn run(path: &str, sort: Sort) -> anyhow::Result<()> {
     // Keyed by the lowercase tag, matching the case-insensitive `zl list --tag`
     let mut usages: BTreeMap<String, TagUsage> = BTreeMap::new();
 
-    for note in notes::load_all(Path::new(path))? {
+    let index = Index::open()?;
+    index.warn_skipped();
+
+    for note in index.notes(Path::new(path))? {
         // A note listing the same tag twice is still a single use
         let mut note_tags: Vec<_> = note.tags.into_iter().map(|tag| (tag.to_lowercase(), tag)).collect();
         note_tags.sort();

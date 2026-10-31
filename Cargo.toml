@@ -1,6 +1,6 @@
 [package]
 name = "zl"
-authhors = ["Fabian Bull<contact@fbull.de>"]
+authors = ["Fabian Bull<contact@fbull.de>"]
 version = "0.1.0"
 edition = "2024"
 description = "A minimal Zettelkasten CLI for markdown notes"
@@ -17,7 +17,9 @@ chrono = "0.4.45"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 globset = "0.4.21"
 markdown = "1.0.0"
+percent-encoding = "2.3.2"
 regex = "1.13.1"
+rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_norway = "0.9.42"
 tera = { version = "2.4.0", features = ["glob_fs"] }

@@ -25,6 +25,13 @@ pub(crate) fn run(path: Option<&str>) -> anyhow::Result<()> {
 
     file.write_all(config.as_bytes()).context("Failed to write config file")?;
 
+    // Config and templates are meant to be committed, the index is a cache rebuilt from the notes.
+    // An existing .gitignore is the user's, so it's left alone.
+    let gitignore = config_dir.join(".gitignore");
+    if !gitignore.exists() {
+        fs::write(&gitignore, "index.db*\n").context("Failed to write .gitignore")?;
+    }
+
     println!("Initialized zettelkasten directory with default configuration.");
 
     Ok(())

@@ -1,12 +1,12 @@
 mod format;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::anyhow;
 use clap::Args;
 use regex::Regex;
 
-use crate::{config::{CONFIG_DIR, Config}, notes::{self, Note}};
+use crate::{config::{CONFIG_DIR, Config}, index::Index, notes::Note};
 
 pub(crate) use format::Format;
 
@@ -25,7 +25,10 @@ pub(crate) fn run(path: &str, filter: &Filter, format: Option<&Format>) -> anyho
         }
     };
 
-    for note in notes::load_all(Path::new(path))?.filter(|note| filter.matches(note)) {
+    let index = Index::open()?;
+    index.warn_skipped();
+
+    for note in filter.apply(&index, Path::new(path))? {
         let line = format.render(&note);
         println!("{}", if trim { line.trim_end() } else { &line });
     }
@@ -47,9 +50,32 @@ pub(crate) struct Filter {
     /// Only list notes without any links: markdown links and URLs
     #[arg(long)]
     no_links: bool,
+
+    /// Only list notes linking to this note, i.e. its backlinks
+    #[arg(long, value_name = "NOTE")]
+    links_to: Option<PathBuf>,
+
+    /// Only list notes no other note links to
+    #[arg(long)]
+    orphan: bool,
 }
 
 impl Filter {
+    /// Notes at or below `path` matching all criteria
+    fn apply(&self, index: &Index, path: &Path) -> anyhow::Result<Vec<Note>> {
+        // Link criteria depend on all notes of the notebook, not just the note itself
+        let backlinks = self.links_to.as_deref().map(|note| index.backlinks(note)).transpose()?;
+        let orphans = if self.orphan { Some(index.orphans()?) } else { None };
+
+        let notes = index.notes(path)?.into_iter().filter(|note| {
+            self.matches(note)
+                && backlinks.as_ref().is_none_or(|paths| paths.contains(&note.path))
+                && orphans.as_ref().is_none_or(|paths| paths.contains(&note.path))
+        });
+
+        Ok(notes.collect())
+    }
+
     fn matches(&self, note: &Note) -> bool {
         let has_all_tags = self.tags.iter().all(|wanted| {
             let wanted = wanted.trim_start_matches('#').to_lowercase();
