@@ -1,3 +1,8 @@
+pub(crate) mod config;
+pub(crate) mod init;
+pub(crate) mod new;
+pub(crate) mod parse;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
