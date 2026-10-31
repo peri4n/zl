@@ -15,14 +15,13 @@ pub(crate) struct Note {
 }
 
 impl Note {
+    /// Reads and parses the note, failing on unreadable files and invalid frontmatter.
+    /// Errors don't mention `path`, callers are expected to report it.
     pub(crate) fn load(path: &Path, parse_options: &ParseOptions) -> anyhow::Result<Self> {
-        let input = fs::read_to_string(path)
-            .with_context(|| format!("Failed to read {}", path.display()))?;
-        let ast = to_mdast(&input, parse_options)
-            .map_err(|e| anyhow!("Failed to parse {}: {}", path.display(), e))?;
+        let input = fs::read_to_string(path).context("Failed to read file")?;
+        let ast = to_mdast(&input, parse_options).map_err(|e| anyhow!("Failed to parse markdown: {}", e))?;
 
-        let frontmatter = Frontmatter::from_ast(&ast)
-            .with_context(|| format!("Invalid frontmatter in {}", path.display()))?;
+        let frontmatter = Frontmatter::from_ast(&ast).context("Invalid frontmatter")?;
 
         let title = frontmatter.title
             .or_else(|| first_heading(&ast))
@@ -58,7 +57,7 @@ impl Frontmatter {
 
 /// Tags as a list (`tags: [a, b]`) or as a single string (`tags: a, b` or `tags: a b`)
 #[derive(Debug, Deserialize)]
-#[serde(untagged)]
+#[serde(untagged, expecting = "expected `tags` to be a list or a comma separated string")]
 enum Tags {
     List(Vec<String>),
     Text(String),

@@ -12,7 +12,7 @@ pub(crate) fn run(path: &str, tags: &[String], title: Option<&Regex>) -> anyhow:
         let note = match Note::load(&file, &parse_options) {
             Ok(note) => note,
             Err(e) => {
-                eprintln!("warning: skipping {:#}", e);
+                eprintln!("warning: skipping {}: {:#}", file.display(), e);
                 continue;
             }
         };
