@@ -15,6 +15,7 @@ fn main() -> anyhow::Result<()> {
         Command::Validate { path } => commands::validate::run(path),
         Command::Tasks { path, status } => commands::tasks::run(path, *status),
         Command::List { path, tags, title, format } => commands::list::run(path, tags, title.as_ref(), format.as_ref()),
+        Command::Tags { path, sort } => commands::tags::run(path, *sort),
         Command::New { path, template, title, vars } => commands::new::run(path, template.as_deref(), title.as_deref(), vars),
     }
 }

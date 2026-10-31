@@ -2,6 +2,7 @@ pub(crate) mod config;
 pub(crate) mod init;
 pub(crate) mod list;
 pub(crate) mod new;
+pub(crate) mod tags;
 pub(crate) mod tasks;
 pub(crate) mod validate;
 
@@ -70,6 +71,16 @@ pub(crate) enum Command {
         /// Use {{ and }} for literal braces, \t and \n for tabs and newlines.
         #[arg(long, value_name = "FORMAT", allow_hyphen_values = true, verbatim_doc_comment)]
         format: Option<list::Format>,
+    },
+    /// Lists all tags used in the frontmatter of notes, with the number of notes using them
+    Tags {
+        /// Markdown file or directory to search
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Order of the tags
+        #[arg(short, long, value_enum, default_value_t = tags::Sort::Name)]
+        sort: tags::Sort,
     },
     /// Creates a new markdown file from a template
     ///

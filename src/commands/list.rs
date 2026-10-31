@@ -10,8 +10,6 @@ use crate::{config::{CONFIG_DIR, Config}, notes::{self, Note}};
 pub(crate) use format::Format;
 
 pub(crate) fn run(path: &str, tags: &[String], title: Option<&Regex>, format: Option<&Format>) -> anyhow::Result<()> {
-    let parse_options = notes::parse_options();
-
     // The configured format is trimmed so notes without tags don't end in spaces,
     // an explicit --format is printed exactly as given
     let configured_format;
@@ -26,20 +24,9 @@ pub(crate) fn run(path: &str, tags: &[String], title: Option<&Regex>, format: Op
         }
     };
 
-    for file in notes::collect(Path::new(path))? {
-        // A single broken note shouldn't hide all other matches
-        let note = match Note::load(&file, &parse_options) {
-            Ok(note) => note,
-            Err(e) => {
-                eprintln!("warning: skipping {}: {:#}", file.display(), e);
-                continue;
-            }
-        };
-
-        if matches(&note, tags, title) {
-            let line = format.render(&note);
-            println!("{}", if trim { line.trim_end() } else { &line });
-        }
+    for note in notes::load_all(Path::new(path))?.filter(|note| matches(note, tags, title)) {
+        let line = format.render(&note);
+        println!("{}", if trim { line.trim_end() } else { &line });
     }
 
     Ok(())

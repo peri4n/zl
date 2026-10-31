@@ -96,6 +96,18 @@ pub(crate) fn parse_options() -> ParseOptions {
     }
 }
 
+/// Loads all notes below `path`. Broken notes are skipped with a warning on stderr,
+/// so a single one doesn't hide all others.
+pub(crate) fn load_all(path: &Path) -> anyhow::Result<impl Iterator<Item = Note>> {
+    let parse_options = parse_options();
+
+    Ok(collect(path)?.into_iter().filter_map(move |file| {
+        Note::load(&file, &parse_options)
+            .inspect_err(|e| eprintln!("warning: skipping {}: {:#}", file.display(), e))
+            .ok()
+    }))
+}
+
 /// Returns `path` itself if it is a file, otherwise all markdown files below it
 pub(crate) fn collect(path: &Path) -> anyhow::Result<Vec<PathBuf>> {
     if !path.exists() {
