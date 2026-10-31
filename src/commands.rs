@@ -1,6 +1,7 @@
 pub(crate) mod config;
 pub(crate) mod init;
 pub(crate) mod new;
+pub(crate) mod tasks;
 pub(crate) mod validate;
 
 use clap::{Parser, Subcommand};
@@ -24,6 +25,16 @@ pub(crate) enum Command {
     Validate {
         /// Path of the markdown file to validate
         path: String,
+    },
+    /// Lists tasks (`- [ ]` and `- [x]` list items) in markdown files
+    Tasks {
+        /// Markdown file or directory to search
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Only show tasks with this status
+        #[arg(short, long, value_enum, default_value_t = tasks::TaskStatus::All)]
+        status: tasks::TaskStatus,
     },
     /// Creates a new markdown file from a template
     ///
