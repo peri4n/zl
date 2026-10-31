@@ -1,11 +1,30 @@
+mod format;
+
 use std::path::Path;
 
+use anyhow::anyhow;
 use regex::Regex;
 
-use crate::notes::{self, Note};
+use crate::{config::{CONFIG_DIR, Config}, notes::{self, Note}};
 
-pub(crate) fn run(path: &str, tags: &[String], title: Option<&Regex>) -> anyhow::Result<()> {
+pub(crate) use format::Format;
+
+pub(crate) fn run(path: &str, tags: &[String], title: Option<&Regex>, format: Option<&Format>) -> anyhow::Result<()> {
     let parse_options = notes::parse_options();
+
+    // The configured format is trimmed so notes without tags don't end in spaces,
+    // an explicit --format is printed exactly as given
+    let configured_format;
+    let (format, trim) = match format {
+        Some(format) => (format, false),
+        None => {
+            let config = Config::from_path_or_default(&format!("{CONFIG_DIR}/config.toml"))?;
+            configured_format = config.list_format()
+                .parse::<Format>()
+                .map_err(|e| anyhow!("Invalid list.format in config: {}", e))?;
+            (&configured_format, true)
+        }
+    };
 
     for file in notes::collect(Path::new(path))? {
         // A single broken note shouldn't hide all other matches
@@ -18,8 +37,8 @@ pub(crate) fn run(path: &str, tags: &[String], title: Option<&Regex>) -> anyhow:
         };
 
         if matches(&note, tags, title) {
-            let tags = note.tags.iter().map(|tag| format!("#{}", tag)).collect::<Vec<_>>().join(" ");
-            println!("{}", format!("{}  {}  {}", note.path.display(), note.title, tags).trim_end());
+            let line = format.render(&note);
+            println!("{}", if trim { line.trim_end() } else { &line });
         }
     }
 

@@ -13,6 +13,8 @@ pub(crate) struct Config {
     note: NoteConfig,
 
     template: TemplateConfig,
+
+    list: FormatConfig,
 }
 
 impl Config {
@@ -32,6 +34,16 @@ impl Config {
         Ok(config)
     }
 
+    /// Like `from_path`, but falls back to the default config if the file doesn't exist,
+    /// for commands that also work outside of an initialized zettelkasten
+    pub(crate) fn from_path_or_default(path: &str) -> anyhow::Result<Self> {
+        if Path::new(path).exists() {
+            Self::from_path(path)
+        } else {
+            Ok(Self::default())
+        }
+    }
+
     /// Template for a new note at `note_path`: the rule of the most specific folder
     /// containing the note, or `note.default_template` if no rule matches
     pub(crate) fn template_for(&self, note_path: &Path) -> &str {
@@ -48,6 +60,10 @@ impl Config {
 
     pub(crate) fn default_title(&self) -> &str {
         &self.note.default_title
+    }
+
+    pub(crate) fn list_format(&self) -> &str {
+        &self.list.format
     }
 }
 
@@ -74,6 +90,21 @@ struct TemplateConfig {
     /// Folder (relative to the zettelkasten root) mapped to the template applied to new notes in it.
     /// Folders are normalized when the config is loaded.
     folders: BTreeMap<PathBuf, String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(default)]
+struct FormatConfig {
+    /// Output format of `zl list` when no --format is given
+    format: String,
+}
+
+impl Default for FormatConfig {
+    fn default() -> Self {
+        FormatConfig {
+            format: "{path}  {title}  {tags}".to_string(),
+        }
+    }
 }
 
 /// Drops `.` components so that `./journal/a.md` and `journal/a.md` match the same folder rule

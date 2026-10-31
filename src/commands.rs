@@ -54,6 +54,22 @@ pub(crate) enum Command {
         /// Only list notes whose title matches this regex, e.g. '(?i)^rust'
         #[arg(long, value_name = "REGEX")]
         title: Option<Regex>,
+
+        /// Output format of each note [default: list.format from the config]
+        ///
+        /// Placeholders:
+        ///   {path}      Path of the note, e.g. ./projects/zl.md
+        ///   {dir}       Directory of the note, e.g. ./projects
+        ///   {filename}  File name without extension, e.g. zl
+        ///   {title}     Title of the note
+        ///   {tags}      Comma separated tags, e.g. rust, cli
+        ///   {link}      Wiki link to the note, e.g. [[zl]]
+        ///   {mdlink}    Markdown link to the note, e.g. [zl Project](./projects/zl.md)
+        ///   {modified}  Last modification date, e.g. 2026-10-31
+        ///
+        /// Use {{ and }} for literal braces, \t and \n for tabs and newlines.
+        #[arg(long, value_name = "FORMAT", allow_hyphen_values = true, verbatim_doc_comment)]
+        format: Option<list::Format>,
     },
     /// Creates a new markdown file from a template
     ///
