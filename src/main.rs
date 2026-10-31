@@ -11,7 +11,7 @@ fn main() -> Result<(), String> {
     match &cli.cmd {
         Command::Config => commands::config::run(),
         Command::Init { path } => commands::init::run(path.as_deref()),
-        Command::Parse { path } => commands::parse::run(path),
+        Command::Validate { path } => commands::validate::run(path),
         Command::New { path, template } => commands::new::run(path, template),
     }
 }

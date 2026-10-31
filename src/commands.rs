@@ -1,7 +1,7 @@
 pub(crate) mod config;
 pub(crate) mod init;
 pub(crate) mod new;
-pub(crate) mod parse;
+pub(crate) mod validate;
 
 use clap::{Parser, Subcommand};
 
@@ -21,7 +21,7 @@ pub(crate) enum Command {
         path: Option<String>,
     },
     /// Checks if a markdown file can be parsed correctly
-    Parse {
+    Validate {
         /// Path of the markdown file to validate
         path: String,
     },
