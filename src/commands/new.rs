@@ -23,7 +23,8 @@ pub(crate) fn run(
     let template = template.unwrap_or(settings.template);
     let title = title.unwrap_or(settings.title);
 
-    let templates = Tera::new(&format!("{CONFIG_DIR}/templates/**/*"))
+    let mut templates = Tera::new();
+    templates.load_from_glob(&format!("{CONFIG_DIR}/templates/**/*"))
         .context("Failed to load templates")?;
 
     let context = build_context(path, title, &settings.extra, vars)?;
@@ -77,7 +78,8 @@ fn build_context(
         if BUILTIN_VARIABLES.contains(&key.as_str()) {
             bail!("Can not override built-in variable `{}` with --var", key);
         }
-        context.insert(key, value);
+        // Tera 2 needs keys convertible into `Cow<'static, str>`, so pass an owned one
+        context.insert(key.clone(), value);
     }
 
     Ok(context)
