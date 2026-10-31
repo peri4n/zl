@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, anyhow, bail};
+use rayon::prelude::*;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::{
@@ -221,7 +222,6 @@ impl Index {
     /// Re-parses notes whose modification time or size changed and removes deleted ones,
     /// all in one transaction
     fn refresh(&mut self) -> anyhow::Result<()> {
-        let parse_options = notes::parse_options();
         let transaction = self.connection.transaction()?;
 
         let mut indexed: HashMap<String, (i64, i64)> = HashMap::new();
@@ -234,18 +234,31 @@ impl Index {
             }
         }
 
-        let mut skipped = Vec::new();
+        let mut changed = Vec::new();
         for file in notes::markdown_files(Path::new(".")).context("Failed to read the notebook directory")? {
             let path = normalize(&file);
             let key = path_key(&path);
             let stamp = file_stamp(&path).with_context(|| format!("Failed to read {}", path.display()))?;
 
-            if indexed.remove(&key) == Some(stamp) {
-                continue;
+            if indexed.remove(&key) != Some(stamp) {
+                changed.push((path, key, stamp));
             }
+        }
 
+        // Parsing is by far the most expensive part, so it runs on all cores. Each thread gets its own
+        // parse options, as they may contain callbacks that can't be shared between threads.
+        let parsed: Vec<_> = changed
+            .into_par_iter()
+            .map_init(notes::parse_options, |parse_options, (path, key, stamp)| {
+                let note = Note::load(&path, parse_options);
+                (path, key, stamp, note)
+            })
+            .collect();
+
+        let mut skipped = Vec::new();
+        for (path, key, stamp, note) in parsed {
             transaction.execute("DELETE FROM notes WHERE path = ?1", [&key])?;
-            match Note::load(&path, &parse_options) {
+            match note {
                 Ok(note) => insert(&transaction, &key, &note, stamp)?,
                 Err(error) => skipped.push((path, error)),
             }
