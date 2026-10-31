@@ -93,6 +93,28 @@ fn init_creates_config_and_never_overwrites_it() {
 }
 
 #[test]
+fn config_shows_defaults_outside_of_notebooks() {
+    let notebook = Notebook::empty();
+
+    let output = notebook.run(&["config"]);
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("default_template = \"default\""));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("has no .zl/config.toml, showing the defaults"), "{stderr}");
+    assert!(stderr.contains("zl init"), "{stderr}");
+}
+
+#[test]
+fn new_requires_a_notebook() {
+    let notebook = Notebook::empty();
+
+    let (_, stderr) = notebook.fails(&["new", "a.md"]);
+    assert!(stderr.contains("is not a zl notebook"), "{stderr}");
+    assert!(stderr.contains("zl init"), "{stderr}");
+    assert!(!notebook.path().join("a.md").exists());
+}
+
+#[test]
 fn new_renders_template_with_groups() {
     let notebook = Notebook::empty();
     notebook.ok(&["init"]);
