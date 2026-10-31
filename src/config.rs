@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+/// Name of the directory holding the zettelkasten configuration and templates
+pub(crate) const CONFIG_DIR: &str = ".zl";
+
 #[derive(Debug, Deserialize, Serialize)]
+#[derive(Default)]
 pub(crate) struct Config {
     note: NoteConfig,
 }
@@ -24,14 +28,6 @@ impl Config {
 
     fn override_with(&mut self, other: &Config) {
         self.note.override_with(&other.note);
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            note: NoteConfig::default(),
-        }
     }
 }
 

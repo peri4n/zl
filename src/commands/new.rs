@@ -2,8 +2,10 @@ use std::{fs, sync::LazyLock};
 
 use tera::{Context, Tera};
 
+use crate::config::CONFIG_DIR;
+
 static TEMPLATES: LazyLock<Tera> = LazyLock::new(|| {
-    match Tera::new(".zl/templates/**/*") {
+    match Tera::new(&format!("{CONFIG_DIR}/templates/**/*")) {
         Ok(t) => t,
         Err(e) => {
             println!("Parsing error(s): {}", e);
