@@ -77,7 +77,11 @@ impl Config {
     pub(crate) fn load() -> anyhow::Result<Self> {
         let path = ConfigDir::current().config_file();
         if !path.exists() {
-            bail!("Config file not found at path: {}", path.display());
+            bail!(
+                "{} is not a zl notebook, {} is missing. Run `zl init` to create it.",
+                notebook_dir().display(),
+                path.display()
+            );
         }
 
         let config_str = fs::read_to_string(&path).context("Failed to read config file")?;
@@ -212,6 +216,11 @@ impl Default for FormatConfig {
             format: "{path}  {title}  {tags}".to_string(),
         }
     }
+}
+
+/// Absolute path of the notebook, i.e. the working directory after `-C`, for messages to the user
+pub(crate) fn notebook_dir() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 /// Compiles the path globs of a group. `*` doesn't cross folders, `**` does, and `<folder>/**`
