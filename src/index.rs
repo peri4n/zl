@@ -89,6 +89,12 @@ impl Index {
         }
     }
 
+    /// Notes at or below `path` that couldn't be parsed and therefore aren't indexed, with the reason
+    pub(crate) fn skipped(&self, path: &Path) -> anyhow::Result<impl Iterator<Item = &(PathBuf, anyhow::Error)>> {
+        let prefix = relative_to_root(path)?;
+        Ok(self.skipped.iter().filter(move |(path, _)| path.starts_with(&prefix)))
+    }
+
     /// All notes at or below `path`, ordered by path
     pub(crate) fn notes(&self, path: &Path) -> anyhow::Result<Vec<Note>> {
         let prefix = relative_to_root(path)?;
@@ -159,8 +165,9 @@ impl Index {
         )
     }
 
-    /// Links to notes that don't exist, ordered by note and line
-    pub(crate) fn broken_links(&self) -> anyhow::Result<Vec<BrokenLink>> {
+    /// Links in notes at or below `path` to notes that don't exist, ordered by note and line
+    pub(crate) fn broken_links(&self, path: &Path) -> anyhow::Result<Vec<BrokenLink>> {
+        let prefix = relative_to_root(path)?;
         let mut statement = self.connection.prepare(
             "SELECT n.path, l.line, l.url FROM links l
              JOIN notes n ON n.id = l.source_id
@@ -176,7 +183,8 @@ impl Index {
             })
         })?;
 
-        Ok(rows.collect::<Result<_, _>>()?)
+        let links: Vec<BrokenLink> = rows.collect::<Result<_, _>>()?;
+        Ok(links.into_iter().filter(|link| link.path.starts_with(&prefix)).collect())
     }
 
     fn paths(&self, sql: &str, params: impl rusqlite::Params) -> anyhow::Result<HashSet<PathBuf>> {

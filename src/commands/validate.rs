@@ -1,41 +1,41 @@
-use std::{collections::HashMap, path::Path};
+use std::{collections::BTreeMap, path::Path};
 
 use anyhow::bail;
 
-use crate::{index::Index, notes::{self, Note}};
+use crate::index::Index;
 
+/// Checks the notes at or below `path`. Updating the index parses every changed note, so notes that
+/// fail to parse and links to missing notes are known afterwards without parsing anything again.
 pub(crate) fn run(path: &str) -> anyhow::Result<()> {
-    let files = notes::collect(Path::new(path))?;
-    let parse_options = notes::parse_options();
+    let path = Path::new(path);
+    let index = Index::open()?;
 
-    // Whether a link target exists depends on the whole notebook, so that comes from the index.
-    // Its warnings about unparsable notes are skipped, those are reported below.
-    let mut broken_links: HashMap<_, Vec<_>> = HashMap::new();
-    for link in Index::open()?.broken_links()? {
-        broken_links.entry(link.path.clone()).or_default().push(link);
+    // Problems of every checked note, an empty list means the note is fine
+    let mut problems: BTreeMap<_, Vec<String>> = BTreeMap::new();
+    for note in index.notes(path)? {
+        problems.entry(note.path).or_default();
+    }
+    for (path, error) in index.skipped(path)? {
+        problems.entry(path.clone()).or_default().push(format!("{}: {:#}", path.display(), error));
+    }
+    for link in index.broken_links(path)? {
+        let problem = format!("{}:{}: broken link `{}`", link.path.display(), link.line, link.url);
+        problems.entry(link.path).or_default().push(problem);
     }
 
     let mut failed = 0;
-    for file in &files {
-        // Loading a note parses its markdown and frontmatter, so it fails on everything we check
-        match Note::load(file, &parse_options) {
-            Ok(note) => match broken_links.get(&note.path) {
-                None => println!("ok    {}", file.display()),
-                Some(links) => {
-                    failed += 1;
-                    for link in links {
-                        println!("FAIL  {}:{}: broken link `{}`", file.display(), link.line, link.url);
-                    }
-                }
-            },
-            Err(reason) => {
-                failed += 1;
-                println!("FAIL  {}: {:#}", file.display(), reason);
+    for (path, problems) in &problems {
+        if problems.is_empty() {
+            println!("ok    {}", path.display());
+        } else {
+            failed += 1;
+            for problem in problems {
+                println!("FAIL  {}", problem);
             }
         }
     }
 
-    println!("\n{} file(s) checked, {} failed", files.len(), failed);
+    println!("\n{} file(s) checked, {} failed", problems.len(), failed);
 
     if failed > 0 {
         bail!("{} file(s) failed validation", failed);
