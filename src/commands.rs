@@ -6,12 +6,18 @@ pub(crate) mod tags;
 pub(crate) mod tasks;
 pub(crate) mod validate;
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 use regex::Regex;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub(crate) struct Cli {
+    /// Notebook to work on, instead of the current directory. All paths are relative to it.
+    #[arg(short = 'C', long, global = true, value_name = "DIR", env = "ZL_NOTEBOOK_DIR")]
+    pub(crate) notebook_dir: Option<PathBuf>,
+
     #[command(subcommand)]
     pub(crate) cmd: Command,
 }
@@ -24,9 +30,10 @@ pub(crate) enum Command {
     Init {
         path: Option<String>,
     },
-    /// Checks if a markdown file can be parsed correctly
+    /// Checks if markdown files and their frontmatter can be parsed correctly
     Validate {
-        /// Path of the markdown file to validate
+        /// Markdown file or directory to validate
+        #[arg(default_value = ".")]
         path: String,
     },
     /// Lists tasks (`- [ ]` and `- [x]` list items) in markdown files
