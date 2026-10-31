@@ -17,7 +17,7 @@ pub(crate) fn run(
     let config = Config::from_path(&format!("{CONFIG_DIR}/config.toml"))?;
     let path = Path::new(path);
 
-    let template = template.unwrap_or(config.default_template());
+    let template = template.unwrap_or_else(|| config.template_for(path));
     let title = title.unwrap_or(config.default_title());
 
     let templates = Tera::new(&format!("{CONFIG_DIR}/templates/**/*"))
@@ -44,7 +44,7 @@ pub(crate) fn run(
     file.write_all(content.as_bytes())
         .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
 
-    println!("Created {}", path.display());
+    println!("Created {} from template `{}`", path.display(), template);
 
     Ok(())
 }

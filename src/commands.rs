@@ -54,7 +54,8 @@ pub(crate) enum Command {
         /// Path of the new markdown file
         path: String,
 
-        /// Template of the new markdown file [default: note.default_template]
+        /// Template of the new markdown file [default: rule for the note's folder in
+        /// template.folders, otherwise note.default_template]
         #[arg(short, long)]
         template: Option<String>,
 
