@@ -3,18 +3,42 @@ mod format;
 use std::path::{Path, PathBuf};
 
 use anyhow::anyhow;
-use clap::Args;
 use regex::Regex;
 
 use crate::{config::{CONFIG_DIR, Config}, index::Index, notes::Note};
 
-pub(crate) use format::Format;
+use format::Format;
 
-pub(crate) fn run(path: &str, filter: &Filter, format: Option<&Format>) -> anyhow::Result<()> {
+#[derive(clap::Args, Debug)]
+pub(crate) struct Args {
+    /// Markdown file or directory to search
+    #[arg(default_value = ".")]
+    path: String,
+
+    #[command(flatten)]
+    filter: Filter,
+
+    /// Output format of each note [default: list.format from the config]
+    ///
+    /// Placeholders:
+    ///   {path}      Path of the note, e.g. projects/zl.md
+    ///   {dir}       Directory of the note, e.g. projects
+    ///   {filename}  File name without extension, e.g. zl
+    ///   {title}     Title of the note
+    ///   {tags}      Comma separated tags, e.g. rust, cli
+    ///   {mdlink}    Markdown link to the note, e.g. [zl Project](projects/zl.md)
+    ///   {modified}  Last modification date, e.g. 2026-10-31
+    ///
+    /// Use {{ and }} for literal braces, \t and \n for tabs and newlines.
+    #[arg(long, value_name = "FORMAT", allow_hyphen_values = true, verbatim_doc_comment)]
+    format: Option<Format>,
+}
+
+pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     // The configured format is trimmed so notes without tags don't end in spaces,
     // an explicit --format is printed exactly as given
     let configured_format;
-    let (format, trim) = match format {
+    let (format, trim) = match &args.format {
         Some(format) => (format, false),
         None => {
             let config = Config::from_path_or_default(&format!("{CONFIG_DIR}/config.toml"))?;
@@ -28,7 +52,7 @@ pub(crate) fn run(path: &str, filter: &Filter, format: Option<&Format>) -> anyho
     let index = Index::open()?;
     index.warn_skipped();
 
-    for note in filter.apply(&index, Path::new(path))? {
+    for note in args.filter.apply(&index, Path::new(&args.path))? {
         let line = format.render(&note);
         println!("{}", if trim { line.trim_end() } else { &line });
     }
@@ -37,8 +61,8 @@ pub(crate) fn run(path: &str, filter: &Filter, format: Option<&Format>) -> anyho
 }
 
 /// Criteria a note has to meet to be listed, all given ones have to match
-#[derive(Args, Debug, Clone)]
-pub(crate) struct Filter {
+#[derive(clap::Args, Debug)]
+struct Filter {
     /// Only list notes with this tag (case-insensitive), can be repeated to require several tags
     #[arg(short, long = "tag", value_name = "TAG")]
     tags: Vec<String>,

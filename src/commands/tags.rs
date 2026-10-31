@@ -18,14 +18,25 @@ struct TagUsage {
     count: usize,
 }
 
-pub(crate) fn run(path: &str, sort: Sort) -> anyhow::Result<()> {
+#[derive(clap::Args, Debug)]
+pub(crate) struct Args {
+    /// Markdown file or directory to search
+    #[arg(default_value = ".")]
+    path: String,
+
+    /// Order of the tags
+    #[arg(short, long, value_enum, default_value_t = Sort::Name)]
+    sort: Sort,
+}
+
+pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     // Keyed by the lowercase tag, matching the case-insensitive `zl list --tag`
     let mut usages: BTreeMap<String, TagUsage> = BTreeMap::new();
 
     let index = Index::open()?;
     index.warn_skipped();
 
-    for note in index.notes(Path::new(path))? {
+    for note in index.notes(Path::new(&args.path))? {
         // A note listing the same tag twice is still a single use
         let mut note_tags: Vec<_> = note.tags.into_iter().map(|tag| (tag.to_lowercase(), tag)).collect();
         note_tags.sort();
@@ -37,7 +48,7 @@ pub(crate) fn run(path: &str, sort: Sort) -> anyhow::Result<()> {
     }
 
     let mut usages: Vec<_> = usages.into_values().collect();
-    if sort == Sort::Count {
+    if args.sort == Sort::Count {
         // Stable sort, so tags with the same count stay alphabetical
         usages.sort_by_key(|usage| Reverse(usage.count));
     }

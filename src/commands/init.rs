@@ -4,8 +4,14 @@ use anyhow::{Context, bail};
 
 use crate::config::{CONFIG_DIR, Config};
 
-pub(crate) fn run(path: Option<&str>) -> anyhow::Result<()> {
-    let root_directory = Path::new(path.unwrap_or("."));
+#[derive(clap::Args, Debug)]
+pub(crate) struct Args {
+    /// Directory to initialize [default: the notebook directory]
+    path: Option<String>,
+}
+
+pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
+    let root_directory = Path::new(args.path.as_deref().unwrap_or("."));
     let config_dir = root_directory.join(CONFIG_DIR);
     let config_path = config_dir.join("config.toml");
 
