@@ -219,9 +219,9 @@ fn validate_reports_invalid_notes_and_broken_links() {
     notebook.write("lonely.md", "# Lonely\n\n[gone](gone.md)\n");
 
     let (stdout, _) = notebook.fails(&["validate"]);
-    assert!(stdout.contains("FAIL  ./broken.md: Invalid frontmatter"), "{stdout}");
-    assert!(stdout.contains("FAIL  ./lonely.md:3: broken link `gone.md`"), "{stdout}");
-    assert!(stdout.contains("ok    ./hub.md"), "{stdout}");
+    assert!(stdout.contains("FAIL  broken.md: Invalid frontmatter"), "{stdout}");
+    assert!(stdout.contains("FAIL  lonely.md:3: broken link `gone.md`"), "{stdout}");
+    assert!(stdout.contains("ok    hub.md"), "{stdout}");
     assert!(stdout.ends_with("5 file(s) checked, 2 failed\n"), "{stdout}");
 }
 
