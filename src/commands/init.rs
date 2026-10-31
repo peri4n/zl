@@ -2,7 +2,7 @@ use std::{fs, io::{ErrorKind, Write}, path::Path};
 
 use anyhow::{Context, bail};
 
-use crate::config::{CONFIG_DIR, Config};
+use crate::config::{Config, ConfigDir};
 
 #[derive(clap::Args, Debug)]
 pub(crate) struct Args {
@@ -11,11 +11,10 @@ pub(crate) struct Args {
 }
 
 pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
-    let root_directory = Path::new(args.path.as_deref().unwrap_or("."));
-    let config_dir = root_directory.join(CONFIG_DIR);
-    let config_path = config_dir.join("config.toml");
+    let config_dir = ConfigDir::of(Path::new(args.path.as_deref().unwrap_or(".")));
+    let config_path = config_dir.config_file();
 
-    fs::create_dir_all(config_dir.join("templates"))
+    fs::create_dir_all(config_dir.templates())
         .context("Failed to create templates directory")?;
 
     let config = toml::to_string_pretty(&Config::default()).context("Failed to serialize config")?;
@@ -31,11 +30,10 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
 
     file.write_all(config.as_bytes()).context("Failed to write config file")?;
 
-    // Config and templates are meant to be committed, the index is a cache rebuilt from the notes.
-    // An existing .gitignore is the user's, so it's left alone.
-    let gitignore = config_dir.join(".gitignore");
+    // An existing .gitignore is the user's, so it's left alone
+    let gitignore = config_dir.gitignore();
     if !gitignore.exists() {
-        fs::write(&gitignore, "index.db*\n").context("Failed to write .gitignore")?;
+        fs::write(&gitignore, ConfigDir::gitignore_content()).context("Failed to write .gitignore")?;
     }
 
     println!("Initialized zettelkasten directory with default configuration.");

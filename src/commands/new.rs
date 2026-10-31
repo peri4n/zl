@@ -4,7 +4,7 @@ use anyhow::{Context as _, bail};
 use chrono::{Local, SecondsFormat};
 use tera::{Context, Tera};
 
-use crate::config::{CONFIG_DIR, Config};
+use crate::config::{Config, ConfigDir};
 
 /// Variables provided to every template, which therefore can't be set with --var
 const BUILTIN_VARIABLES: &[&str] = &["title", "id", "date", "time", "datetime", "filename", "extra"];
@@ -34,7 +34,7 @@ pub(crate) struct Args {
 }
 
 pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
-    let config = Config::from_path(&format!("{CONFIG_DIR}/config.toml"))?;
+    let config = Config::load()?;
     let path = Path::new(&args.path);
 
     let settings = config.note_settings(path, args.group.as_deref())?;
@@ -42,7 +42,7 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     let title = args.title.as_deref().unwrap_or(settings.title);
 
     let mut templates = Tera::new();
-    templates.load_from_glob(&format!("{CONFIG_DIR}/templates/**/*"))
+    templates.load_from_glob(&ConfigDir::current().templates().join("**/*").to_string_lossy())
         .context("Failed to load templates")?;
 
     let context = build_context(path, title, &settings.extra, &args.vars)?;

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::anyhow;
 use regex::Regex;
 
-use crate::{config::{CONFIG_DIR, Config}, index::Index, notes::Note};
+use crate::{config::Config, index::Index, notes::Note};
 
 use format::Format;
 
@@ -41,7 +41,7 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     let (format, trim) = match &args.format {
         Some(format) => (format, false),
         None => {
-            let config = Config::from_path_or_default(&format!("{CONFIG_DIR}/config.toml"))?;
+            let config = Config::load_or_default()?;
             configured_format = config.list_format()
                 .parse::<Format>()
                 .map_err(|e| anyhow!("Invalid list.format in config: {}", e))?;
