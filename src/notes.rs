@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs, path::{Path, PathBuf}};
 
-use anyhow::{Context, anyhow, bail};
-use markdown::{Constructs, ParseOptions, mdast::Node, to_mdast};
+use anyhow::{Context, anyhow};
+use markdown::{Constructs, ParseOptions, mdast::{ListItem, Node}, to_mdast};
 use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 
@@ -18,6 +18,8 @@ pub(crate) struct Note {
     pub(crate) tags: Vec<String>,
     /// All links in the note: markdown links and autolinks
     pub(crate) links: Vec<Link>,
+    /// All task list items (`- [ ]` and `- [x]`), including nested ones
+    pub(crate) tasks: Vec<Task>,
 }
 
 #[derive(Debug)]
@@ -27,6 +29,14 @@ pub(crate) struct Link {
     pub(crate) line: usize,
     /// Path of the linked note relative to the notebook root, `None` for links to anything else
     pub(crate) target: Option<PathBuf>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Task {
+    pub(crate) line: usize,
+    pub(crate) checked: bool,
+    /// Raw markdown of the task's first paragraph, so links and inline code stay intact
+    pub(crate) text: String,
 }
 
 impl Note {
@@ -45,6 +55,7 @@ impl Note {
 
         Ok(Note {
             links: links(&ast, &path),
+            tasks: tasks(&ast, &input),
             path,
             title,
             tags: frontmatter.tags.map(Tags::into_vec).unwrap_or_default(),
@@ -153,6 +164,35 @@ fn has_scheme(url: &str) -> bool {
     })
 }
 
+fn tasks(ast: &Node, input: &str) -> Vec<Task> {
+    let mut tasks = Vec::new();
+    walk(ast, &mut |node| {
+        if let Node::ListItem(item) = node
+            && let Some(checked) = item.checked
+        {
+            tasks.push(Task {
+                line: item.position.as_ref().map_or(0, |position| position.start.line),
+                checked,
+                text: task_text(item, input),
+            });
+        }
+    });
+
+    tasks
+}
+
+/// The task's first paragraph with line breaks and repeated spaces collapsed into single spaces
+fn task_text(item: &ListItem, input: &str) -> String {
+    let Some(position) = item.children.first().and_then(Node::position) else {
+        return String::new();
+    };
+
+    input[position.start.offset..position.end.offset]
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn walk<'a>(node: &'a Node, visit: &mut impl FnMut(&'a Node)) {
     visit(node);
     for child in node.children().into_iter().flatten() {
@@ -178,22 +218,8 @@ pub(crate) fn parse_options() -> ParseOptions {
     }
 }
 
-/// Returns `path` itself if it is a file, otherwise all markdown files below it
-pub(crate) fn collect(path: &Path) -> anyhow::Result<Vec<PathBuf>> {
-    if !path.exists() {
-        bail!("Path not found: {}", path.display());
-    }
-
-    if path.is_dir() {
-        markdown_files(path)
-            .with_context(|| format!("Failed to read directory {}", path.display()))
-    } else {
-        Ok(vec![path.to_path_buf()])
-    }
-}
-
 /// Recursively collects all markdown files below `dir`, skipping hidden files and directories.
-fn markdown_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
+pub(crate) fn markdown_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
     for entry in fs::read_dir(dir)? {
