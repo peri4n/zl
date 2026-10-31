@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fs, path::Path};
+use std::{collections::BTreeMap, fs, path::{Path, PathBuf}};
 
 use anyhow::{Context, anyhow, bail};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
@@ -6,8 +6,47 @@ use serde::{Deserialize, Serialize};
 
 use crate::paths::normalize;
 
-/// Name of the directory holding the zettelkasten configuration and templates
-pub(crate) const CONFIG_DIR: &str = ".zl";
+/// The `.zl` directory of a notebook, holding its configuration, templates and index
+pub(crate) struct ConfigDir(PathBuf);
+
+impl ConfigDir {
+    const INDEX_FILE: &str = "index.db";
+
+    /// `.zl` of the current notebook, the working directory
+    pub(crate) fn current() -> Self {
+        Self::of(Path::new(""))
+    }
+
+    /// `.zl` of the notebook at `root`
+    pub(crate) fn of(root: &Path) -> Self {
+        ConfigDir(root.join(".zl"))
+    }
+
+    pub(crate) fn exists(&self) -> bool {
+        self.0.is_dir()
+    }
+
+    pub(crate) fn config_file(&self) -> PathBuf {
+        self.0.join("config.toml")
+    }
+
+    pub(crate) fn templates(&self) -> PathBuf {
+        self.0.join("templates")
+    }
+
+    pub(crate) fn index_file(&self) -> PathBuf {
+        self.0.join(Self::INDEX_FILE)
+    }
+
+    pub(crate) fn gitignore(&self) -> PathBuf {
+        self.0.join(".gitignore")
+    }
+
+    /// Content of `.gitignore`: config and templates are meant to be committed, the index is a cache
+    pub(crate) fn gitignore_content() -> String {
+        format!("{}*\n", Self::INDEX_FILE)
+    }
+}
 
 /// Missing sections and fields fall back to their defaults, unknown ones are rejected to catch typos
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -34,12 +73,14 @@ pub(crate) struct NoteSettings<'a> {
 }
 
 impl Config {
-    pub(crate) fn from_path(path: &str) -> anyhow::Result<Self> {
-        if !Path::new(path).exists() {
-            bail!("Config file not found at path: {}", path);
+    /// Loads the config of the current notebook
+    pub(crate) fn load() -> anyhow::Result<Self> {
+        let path = ConfigDir::current().config_file();
+        if !path.exists() {
+            bail!("Config file not found at path: {}", path.display());
         }
 
-        let config_str = fs::read_to_string(path).context("Failed to read config file")?;
+        let config_str = fs::read_to_string(&path).context("Failed to read config file")?;
         let mut config: Config = toml::from_str(&config_str).context("Failed to parse config file")?;
 
         for (name, group) in &mut config.group {
@@ -50,11 +91,11 @@ impl Config {
         Ok(config)
     }
 
-    /// Like `from_path`, but falls back to the default config if the file doesn't exist,
+    /// Like `load`, but falls back to the default config if the notebook has none,
     /// for commands that also work outside of an initialized zettelkasten
-    pub(crate) fn from_path_or_default(path: &str) -> anyhow::Result<Self> {
-        if Path::new(path).exists() {
-            Self::from_path(path)
+    pub(crate) fn load_or_default() -> anyhow::Result<Self> {
+        if ConfigDir::current().config_file().exists() {
+            Self::load()
         } else {
             Ok(Self::default())
         }

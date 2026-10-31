@@ -9,7 +9,7 @@ use anyhow::{Context, anyhow, bail};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::{
-    config::CONFIG_DIR,
+    config::ConfigDir,
     notes::{self, Link, Note, Task},
     paths::normalize,
 };
@@ -75,9 +75,9 @@ pub(crate) struct BrokenLink {
 
 impl Index {
     pub(crate) fn open() -> anyhow::Result<Self> {
-        let config_dir = Path::new(CONFIG_DIR);
-        let connection = if config_dir.is_dir() {
-            open_file(&config_dir.join("index.db"))?
+        let config_dir = ConfigDir::current();
+        let connection = if config_dir.exists() {
+            open_file(&config_dir.index_file())?
         } else {
             let connection = Connection::open_in_memory()?;
             prepare(&connection)?;
