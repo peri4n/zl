@@ -206,8 +206,23 @@ fn tags_counts_notes_per_tag() {
 fn tasks_filters_by_status() {
     let notebook = Notebook::new();
 
-    assert_eq!(notebook.ok(&["tasks"]), "./rust.md:5  [ ] open task\n./rust.md:6  [x] done task\n");
-    assert_eq!(notebook.ok(&["tasks", "--status", "done"]), "./rust.md:6  [x] done task\n");
+    assert_eq!(notebook.ok(&["tasks"]), "rust.md:5  [ ] open task\nrust.md:6  [x] done task\n");
+    assert_eq!(notebook.ok(&["tasks", "--status", "done"]), "rust.md:6  [x] done task\n");
+}
+
+#[test]
+fn tasks_skips_broken_notes_with_a_warning() {
+    let notebook = Notebook::new();
+    notebook.write("broken.md", "---\ntags: {a: 1}\n---\n- [ ] hidden task\n");
+    notebook.write("nested.md", "- [ ] parent\n  - [x] child with\n    two lines\n");
+
+    let output = notebook.run(&["tasks", "--status", "all"]);
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "nested.md:1  [ ] parent\nnested.md:2  [x] child with two lines\nrust.md:5  [ ] open task\nrust.md:6  [x] done task\n"
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("warning: skipping broken.md"));
 }
 
 #[test]

@@ -10,12 +10,12 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::{
     config::CONFIG_DIR,
-    notes::{self, Link, Note},
+    notes::{self, Link, Note, Task},
     paths::normalize,
 };
 
 /// Bumped on every schema change, a database with another version is rebuilt from scratch
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 
 const SCHEMA: &str = "
     CREATE TABLE notes (
@@ -46,6 +46,15 @@ const SCHEMA: &str = "
         PRIMARY KEY (source_id, position)
     );
     CREATE INDEX links_by_target ON links(target_path);
+
+    CREATE TABLE tasks (
+        note_id   INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+        position  INTEGER NOT NULL,         -- order in the note
+        line      INTEGER NOT NULL,
+        checked   INTEGER NOT NULL,         -- 1 for `- [x]`, 0 for `- [ ]`
+        text      TEXT    NOT NULL,
+        PRIMARY KEY (note_id, position)
+    );
 ";
 
 /// Cache of the parsed notes of the notebook in `.zl/index.db`, refreshed on every `open` for files
@@ -108,7 +117,7 @@ impl Index {
             let (id, path, title) = row?;
             let path = PathBuf::from(path);
             if path.starts_with(&prefix) {
-                notes.insert(id, Note { path, title, tags: Vec::new(), links: Vec::new() });
+                notes.insert(id, Note { path, title, tags: Vec::new(), links: Vec::new(), tasks: Vec::new() });
             }
         }
 
@@ -137,6 +146,21 @@ impl Index {
             let (id, link) = row?;
             if let Some(note) = notes.get_mut(&id) {
                 note.links.push(link);
+            }
+        }
+
+        let mut statement = self.connection
+            .prepare("SELECT note_id, line, checked, text FROM tasks ORDER BY note_id, position")?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                Task { line: row.get::<_, i64>(1)? as usize, checked: row.get(2)?, text: row.get(3)? },
+            ))
+        })?;
+        for row in rows {
+            let (id, task) = row?;
+            if let Some(note) = notes.get_mut(&id) {
+                note.tasks.push(task);
             }
         }
 
@@ -211,7 +235,7 @@ impl Index {
         }
 
         let mut skipped = Vec::new();
-        for file in notes::collect(Path::new("."))? {
+        for file in notes::markdown_files(Path::new(".")).context("Failed to read the notebook directory")? {
             let path = normalize(&file);
             let key = path_key(&path);
             let stamp = file_stamp(&path).with_context(|| format!("Failed to read {}", path.display()))?;
@@ -261,6 +285,7 @@ fn prepare(connection: &Connection) -> rusqlite::Result<()> {
     if version != SCHEMA_VERSION {
         connection.execute_batch(&format!(
             "BEGIN;
+             DROP TABLE IF EXISTS tasks;
              DROP TABLE IF EXISTS links;
              DROP TABLE IF EXISTS tags;
              DROP TABLE IF EXISTS notes;
@@ -294,6 +319,13 @@ fn insert(transaction: &Transaction, key: &str, note: &Note, (modified, size): (
     for (position, link) in note.links.iter().enumerate() {
         let target = link.target.as_deref().map(path_key);
         insert_link.execute(params![id, position as i64, link.line as i64, link.url, target])?;
+    }
+
+    let mut insert_task = transaction.prepare_cached(
+        "INSERT INTO tasks (note_id, position, line, checked, text) VALUES (?1, ?2, ?3, ?4, ?5)",
+    )?;
+    for (position, task) in note.tasks.iter().enumerate() {
+        insert_task.execute(params![id, position as i64, task.line as i64, task.checked, task.text])?;
     }
 
     Ok(())

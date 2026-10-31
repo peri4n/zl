@@ -1,10 +1,8 @@
-use std::{fs, path::Path};
+use std::path::Path;
 
-use anyhow::{Context, anyhow};
 use clap::ValueEnum;
-use markdown::{mdast::{ListItem, Node}, to_mdast};
 
-use crate::notes;
+use crate::index::Index;
 
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TaskStatus {
@@ -26,58 +24,16 @@ impl TaskStatus {
     }
 }
 
-struct Task {
-    line: usize,
-    checked: bool,
-    text: String,
-}
-
 pub(crate) fn run(path: &str, status: TaskStatus) -> anyhow::Result<()> {
-    let parse_options = notes::parse_options();
+    let index = Index::open()?;
+    index.warn_skipped();
 
-    for file in notes::collect(Path::new(path))? {
-        let input = fs::read_to_string(&file)
-            .with_context(|| format!("Failed to read {}", file.display()))?;
-        let ast = to_mdast(&input, &parse_options)
-            .map_err(|e| anyhow!("Failed to parse {}: {}", file.display(), e))?;
-
-        let mut tasks = Vec::new();
-        collect_tasks(&ast, &input, &mut tasks);
-
-        for task in tasks.iter().filter(|t| status.matches(t.checked)) {
+    for note in index.notes(Path::new(path))? {
+        for task in note.tasks.iter().filter(|task| status.matches(task.checked)) {
             let marker = if task.checked { "[x]" } else { "[ ]" };
-            println!("{}:{}  {} {}", file.display(), task.line, marker, task.text);
+            println!("{}:{}  {} {}", note.path.display(), task.line, marker, task.text);
         }
     }
 
     Ok(())
-}
-
-/// Walks the syntax tree and collects all task list items, including nested ones
-fn collect_tasks(node: &Node, input: &str, tasks: &mut Vec<Task>) {
-    if let Node::ListItem(item) = node
-        && let Some(checked) = item.checked
-    {
-        tasks.push(Task {
-            line: item.position.as_ref().map_or(0, |p| p.start.line),
-            checked,
-            text: task_text(item, input),
-        });
-    }
-
-    for child in node.children().into_iter().flatten() {
-        collect_tasks(child, input, tasks);
-    }
-}
-
-/// Raw markdown of the task's first paragraph, so links and inline code stay intact
-fn task_text(item: &ListItem, input: &str) -> String {
-    let Some(position) = item.children.first().and_then(Node::position) else {
-        return String::new();
-    };
-
-    input[position.start.offset..position.end.offset]
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
 }
