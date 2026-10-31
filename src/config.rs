@@ -26,6 +26,14 @@ impl Config {
         }
     }
 
+    pub(crate) fn default_template(&self) -> &str {
+        &self.note.default_template
+    }
+
+    pub(crate) fn default_title(&self) -> &str {
+        &self.note.default_title
+    }
+
     fn override_with(&mut self, other: &Config) {
         self.note.override_with(&other.note);
     }
