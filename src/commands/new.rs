@@ -1,4 +1,4 @@
-use std::{fs, io::{ErrorKind, Write}, path::Path};
+use std::{collections::BTreeMap, fs, io::{ErrorKind, Write}, path::Path};
 
 use anyhow::{Context as _, bail};
 use chrono::{Local, SecondsFormat};
@@ -7,24 +7,26 @@ use tera::{Context, Tera};
 use crate::config::{CONFIG_DIR, Config};
 
 /// Variables provided to every template, which therefore can't be set with --var
-const BUILTIN_VARIABLES: &[&str] = &["title", "id", "date", "time", "datetime", "filename"];
+const BUILTIN_VARIABLES: &[&str] = &["title", "id", "date", "time", "datetime", "filename", "extra"];
 
 pub(crate) fn run(
     path: &str,
     template: Option<&str>,
     title: Option<&str>,
+    group: Option<&str>,
     vars: &[(String, String)],
 ) -> anyhow::Result<()> {
     let config = Config::from_path(&format!("{CONFIG_DIR}/config.toml"))?;
     let path = Path::new(path);
 
-    let template = template.unwrap_or_else(|| config.template_for(path));
-    let title = title.unwrap_or(config.default_title());
+    let settings = config.note_settings(path, group)?;
+    let template = template.unwrap_or(settings.template);
+    let title = title.unwrap_or(settings.title);
 
     let templates = Tera::new(&format!("{CONFIG_DIR}/templates/**/*"))
         .context("Failed to load templates")?;
 
-    let context = build_context(path, title, vars)?;
+    let context = build_context(path, title, &settings.extra, vars)?;
     let content = templates.render(&format!("{}.md", template), &context)
         .with_context(|| format!("Failed to render template `{}`", template))?;
 
@@ -45,12 +47,20 @@ pub(crate) fn run(
     file.write_all(content.as_bytes())
         .with_context(|| format!("Failed to write {}", path.display()))?;
 
-    println!("Created {} from template `{}`", path.display(), template);
+    match settings.group {
+        Some(group) => println!("Created {} from template `{}` of group `{}`", path.display(), template, group),
+        None => println!("Created {} from template `{}`", path.display(), template),
+    }
 
     Ok(())
 }
 
-fn build_context(path: &Path, title: &str, vars: &[(String, String)]) -> anyhow::Result<Context> {
+fn build_context(
+    path: &Path,
+    title: &str,
+    extra: &BTreeMap<&str, &toml::Value>,
+    vars: &[(String, String)],
+) -> anyhow::Result<Context> {
     let now = Local::now();
     let filename = path.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
 
@@ -61,6 +71,7 @@ fn build_context(path: &Path, title: &str, vars: &[(String, String)]) -> anyhow:
     context.insert("time", &now.format("%H:%M").to_string());
     context.insert("datetime", &now.to_rfc3339_opts(SecondsFormat::Secs, false));
     context.insert("filename", &filename);
+    context.insert("extra", extra);
 
     for (key, value) in vars {
         if BUILTIN_VARIABLES.contains(&key.as_str()) {

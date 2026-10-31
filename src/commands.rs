@@ -93,21 +93,31 @@ pub(crate) enum Command {
     ///   time      Creation time, e.g. 14:30
     ///   datetime  Creation timestamp in RFC 3339, e.g. 2026-10-31T14:30:05+01:00
     ///   filename  File name of the note without extension
+    ///   extra     Values of [extra] in the config, merged with the [extra] of the note's group,
+    ///             e.g. {{ extra.author }}
     ///
     /// Additional variables can be passed with --var KEY=VALUE.
+    ///
+    /// If the note's folder matches the paths of a group in the config, the group's [note] and
+    /// [extra] settings override the root ones. Use --group to choose a group explicitly.
     #[command(verbatim_doc_comment)]
     New {
         /// Path of the new markdown file
         path: String,
 
-        /// Template of the new markdown file [default: rule for the note's folder in
-        /// template.folders, otherwise note.default_template]
+        /// Template of the new markdown file [default: note.default_template of the note's group,
+        /// otherwise of the root config]
         #[arg(short, long)]
         template: Option<String>,
 
-        /// Title of the new note [default: note.default_title]
+        /// Title of the new note [default: note.default_title of the note's group, otherwise of the
+        /// root config]
         #[arg(long)]
         title: Option<String>,
+
+        /// Group whose settings to apply, instead of the group whose paths match the note's folder
+        #[arg(short, long)]
+        group: Option<String>,
 
         /// Additional template variable, can be repeated
         #[arg(long = "var", value_name = "KEY=VALUE", value_parser = parse_key_value)]
