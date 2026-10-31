@@ -8,10 +8,10 @@
   };
 
   outputs =
-    { self
-    , flake-utils
+    { flake-utils
     , nixpkgs
     , rust-overlay
+    , ...
     }:
 
     flake-utils.lib.eachDefaultSystem (system:
@@ -38,11 +38,14 @@
       devShells.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [
           rustToolchain
+          gdb
           openssl
           pkg-config
           cargo-deny
           cargo-edit
-          cargo-watch
+          cargo-criterion
+          cargo-nextest
+          bacon
           rust-analyzer
         ];
 
