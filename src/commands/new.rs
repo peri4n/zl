@@ -1,5 +1,6 @@
-use std::{error::Error, fs, io::{ErrorKind, Write}, path::Path};
+use std::{fs, io::{ErrorKind, Write}, path::Path};
 
+use anyhow::{Context as _, bail};
 use chrono::{Local, SecondsFormat};
 use tera::{Context, Tera};
 
@@ -13,7 +14,7 @@ pub(crate) fn run(
     template: Option<&str>,
     title: Option<&str>,
     vars: &[(String, String)],
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let config = Config::from_path(&format!("{CONFIG_DIR}/config.toml"))?;
     let path = Path::new(path);
 
@@ -21,35 +22,35 @@ pub(crate) fn run(
     let title = title.unwrap_or(config.default_title());
 
     let templates = Tera::new(&format!("{CONFIG_DIR}/templates/**/*"))
-        .map_err(|e| format!("Failed to load templates: {}", error_chain(&e)))?;
+        .context("Failed to load templates")?;
 
     let context = build_context(path, title, vars)?;
     let content = templates.render(&format!("{}.md", template), &context)
-        .map_err(|e| format!("Failed to render template `{}`: {}", template, error_chain(&e)))?;
+        .with_context(|| format!("Failed to render template `{}`", template))?;
 
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
+            .with_context(|| format!("Failed to create directory {}", parent.display()))?;
     }
 
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(|e| match e.kind() {
-            ErrorKind::AlreadyExists => format!("Note already exists: {}", path.display()),
-            _ => format!("Failed to create {}: {}", path.display(), e),
-        })?;
+    // `create_new` fails if the file exists, so an existing note is never overwritten
+    let mut file = match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+            bail!("Note already exists: {}", path.display())
+        }
+        Err(e) => return Err(e).with_context(|| format!("Failed to create {}", path.display())),
+    };
 
     file.write_all(content.as_bytes())
-        .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
+        .with_context(|| format!("Failed to write {}", path.display()))?;
 
     println!("Created {} from template `{}`", path.display(), template);
 
     Ok(())
 }
 
-fn build_context(path: &Path, title: &str, vars: &[(String, String)]) -> Result<Context, String> {
+fn build_context(path: &Path, title: &str, vars: &[(String, String)]) -> anyhow::Result<Context> {
     let now = Local::now();
     let filename = path.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
 
@@ -63,23 +64,10 @@ fn build_context(path: &Path, title: &str, vars: &[(String, String)]) -> Result<
 
     for (key, value) in vars {
         if BUILTIN_VARIABLES.contains(&key.as_str()) {
-            return Err(format!("Can not override built-in variable `{}` with --var", key));
+            bail!("Can not override built-in variable `{}` with --var", key);
         }
         context.insert(key, value);
     }
 
     Ok(context)
-}
-
-fn error_chain(error: &dyn Error) -> String {
-    let mut message = error.to_string();
-    let mut source = error.source();
-
-    while let Some(cause) = source {
-        message.push_str(": ");
-        message.push_str(&cause.to_string());
-        source = cause.source();
-    }
-
-    message
 }

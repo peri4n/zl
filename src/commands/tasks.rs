@@ -1,5 +1,6 @@
 use std::{fs, path::Path};
 
+use anyhow::{Context, anyhow};
 use clap::ValueEnum;
 use markdown::{mdast::{ListItem, Node}, to_mdast};
 
@@ -31,14 +32,14 @@ struct Task {
     text: String,
 }
 
-pub(crate) fn run(path: &str, status: TaskStatus) -> Result<(), String> {
+pub(crate) fn run(path: &str, status: TaskStatus) -> anyhow::Result<()> {
     let parse_options = notes::parse_options();
 
     for file in notes::collect(Path::new(path))? {
         let input = fs::read_to_string(&file)
-            .map_err(|e| format!("Failed to read {}: {}", file.display(), e))?;
+            .with_context(|| format!("Failed to read {}", file.display()))?;
         let ast = to_mdast(&input, &parse_options)
-            .map_err(|e| format!("Failed to parse {}: {}", file.display(), e))?;
+            .map_err(|e| anyhow!("Failed to parse {}: {}", file.display(), e))?;
 
         let mut tasks = Vec::new();
         collect_tasks(&ast, &input, &mut tasks);

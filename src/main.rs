@@ -6,7 +6,7 @@ use clap::Parser;
 
 use crate::commands::{Cli, Command};
 
-fn main() -> Result<(), String> {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.cmd {

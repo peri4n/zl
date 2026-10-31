@@ -1,5 +1,6 @@
-use std::{collections::BTreeMap, path::{Component, Path, PathBuf}};
+use std::{collections::BTreeMap, fs, path::{Component, Path, PathBuf}};
 
+use anyhow::{Context, bail};
 use serde::{Deserialize, Serialize};
 
 /// Name of the directory holding the zettelkasten configuration and templates
@@ -15,27 +16,32 @@ pub(crate) struct Config {
 }
 
 impl Config {
-    pub(crate) fn from_path(path: &str) -> Result<Self, String> {
-        if std::path::Path::new(path).exists() {
-            let config_str = std::fs::read_to_string(path)
-                .map_err(|e| format!("Failed to read config file: {}", e))?;
-
-            toml::from_str(&config_str)
-                .map_err(|e| format!("Failed to parse config file: {}", e))
-        } else {
-            Err(format!("Config file not found at path: {}.", path))
+    pub(crate) fn from_path(path: &str) -> anyhow::Result<Self> {
+        if !Path::new(path).exists() {
+            bail!("Config file not found at path: {}", path);
         }
+
+        let config_str = fs::read_to_string(path).context("Failed to read config file")?;
+        let mut config: Config = toml::from_str(&config_str).context("Failed to parse config file")?;
+
+        config.template.folders = config.template.folders
+            .into_iter()
+            .map(|(folder, template)| (normalize(&folder), template))
+            .collect();
+
+        Ok(config)
     }
 
     /// Template for a new note at `note_path`: the rule of the most specific folder
     /// containing the note, or `note.default_template` if no rule matches
     pub(crate) fn template_for(&self, note_path: &Path) -> &str {
-        let note_path = normalize(note_path);
+        let Some(parent) = normalize(note_path).parent().map(Path::to_path_buf) else {
+            return &self.note.default_template;
+        };
 
         self.template.folders
             .iter()
-            .map(|(folder, template)| (normalize(Path::new(folder)), template))
-            .filter(|(folder, _)| note_path.parent().is_some_and(|parent| parent.starts_with(folder)))
+            .filter(|(folder, _)| parent.starts_with(folder))
             .max_by_key(|(folder, _)| folder.components().count())
             .map_or(&self.note.default_template, |(_, template)| template)
     }
@@ -65,8 +71,9 @@ impl Default for NoteConfig {
 #[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(default)]
 struct TemplateConfig {
-    /// Folder (relative to the zettelkasten root) mapped to the template applied to new notes in it
-    folders: BTreeMap<String, String>,
+    /// Folder (relative to the zettelkasten root) mapped to the template applied to new notes in it.
+    /// Folders are normalized when the config is loaded.
+    folders: BTreeMap<PathBuf, String>,
 }
 
 /// Drops `.` components so that `./journal/a.md` and `journal/a.md` match the same folder rule

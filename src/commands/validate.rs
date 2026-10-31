@@ -1,10 +1,11 @@
 use std::{fs, path::Path};
 
+use anyhow::{anyhow, bail};
 use markdown::{ParseOptions, to_mdast};
 
 use crate::notes;
 
-pub(crate) fn run(path: &str) -> Result<(), String> {
+pub(crate) fn run(path: &str) -> anyhow::Result<()> {
     let files = notes::collect(Path::new(path))?;
     let parse_options = notes::parse_options();
 
@@ -14,7 +15,7 @@ pub(crate) fn run(path: &str) -> Result<(), String> {
             Ok(()) => println!("ok    {}", file.display()),
             Err(reason) => {
                 failed += 1;
-                println!("FAIL  {}: {}", file.display(), reason);
+                println!("FAIL  {}: {:#}", file.display(), reason);
             }
         }
     }
@@ -22,15 +23,15 @@ pub(crate) fn run(path: &str) -> Result<(), String> {
     println!("\n{} file(s) checked, {} failed", files.len(), failed);
 
     if failed > 0 {
-        return Err(format!("{} file(s) failed validation", failed));
+        bail!("{} file(s) failed validation", failed);
     }
 
     Ok(())
 }
 
-fn validate_file(path: &Path, parse_options: &ParseOptions) -> Result<(), String> {
-    let input = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    to_mdast(&input, parse_options).map_err(|e| e.to_string())?;
+fn validate_file(path: &Path, parse_options: &ParseOptions) -> anyhow::Result<()> {
+    let input = fs::read_to_string(path)?;
+    to_mdast(&input, parse_options).map_err(|e| anyhow!("{}", e))?;
 
     Ok(())
 }

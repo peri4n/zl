@@ -1,5 +1,6 @@
 use std::{fs, path::{Path, PathBuf}};
 
+use anyhow::{Context, bail};
 use markdown::{Constructs, ParseOptions};
 
 /// Markdown dialect of the notes: GitHub flavored markdown with frontmatter
@@ -14,14 +15,14 @@ pub(crate) fn parse_options() -> ParseOptions {
 }
 
 /// Returns `path` itself if it is a file, otherwise all markdown files below it
-pub(crate) fn collect(path: &Path) -> Result<Vec<PathBuf>, String> {
+pub(crate) fn collect(path: &Path) -> anyhow::Result<Vec<PathBuf>> {
     if !path.exists() {
-        return Err(format!("Path not found: {}", path.display()));
+        bail!("Path not found: {}", path.display());
     }
 
     if path.is_dir() {
         markdown_files(path)
-            .map_err(|e| format!("Failed to read directory {}: {}", path.display(), e))
+            .with_context(|| format!("Failed to read directory {}", path.display()))
     } else {
         Ok(vec![path.to_path_buf()])
     }
