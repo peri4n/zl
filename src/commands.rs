@@ -21,67 +21,24 @@ pub(crate) struct Cli {
     pub(crate) cmd: Command,
 }
 
-#[derive(Subcommand, Debug, Clone)]
+/// The arguments of each command are defined next to its implementation
+#[derive(Subcommand, Debug)]
 pub(crate) enum Command {
     /// Prints the current configuration to stdout
     Config,
     /// Initializes a zettelkasten directory
-    Init {
-        path: Option<String>,
-    },
+    Init(init::Args),
     /// Checks if markdown files and their frontmatter can be parsed correctly
-    Validate {
-        /// Markdown file or directory to validate
-        #[arg(default_value = ".")]
-        path: String,
-    },
+    Validate(validate::Args),
     /// Lists tasks (`- [ ]` and `- [x]` list items) in markdown files
-    Tasks {
-        /// Markdown file or directory to search
-        #[arg(default_value = ".")]
-        path: String,
-
-        /// Only show tasks with this status
-        #[arg(short, long, value_enum, default_value_t = tasks::TaskStatus::All)]
-        status: tasks::TaskStatus,
-    },
+    Tasks(tasks::Args),
     /// Lists notes matching all given filters
     ///
     /// Tags are read from the `tags` field of the frontmatter. The title is the frontmatter
     /// `title`, otherwise the first level 1 heading, otherwise the file name.
-    List {
-        /// Markdown file or directory to search
-        #[arg(default_value = ".")]
-        path: String,
-
-        #[command(flatten)]
-        filter: list::Filter,
-
-        /// Output format of each note [default: list.format from the config]
-        ///
-        /// Placeholders:
-        ///   {path}      Path of the note, e.g. ./projects/zl.md
-        ///   {dir}       Directory of the note, e.g. ./projects
-        ///   {filename}  File name without extension, e.g. zl
-        ///   {title}     Title of the note
-        ///   {tags}      Comma separated tags, e.g. rust, cli
-        ///   {mdlink}    Markdown link to the note, e.g. [zl Project](./projects/zl.md)
-        ///   {modified}  Last modification date, e.g. 2026-10-31
-        ///
-        /// Use {{ and }} for literal braces, \t and \n for tabs and newlines.
-        #[arg(long, value_name = "FORMAT", allow_hyphen_values = true, verbatim_doc_comment)]
-        format: Option<list::Format>,
-    },
+    List(list::Args),
     /// Lists all tags used in the frontmatter of notes, with the number of notes using them
-    Tags {
-        /// Markdown file or directory to search
-        #[arg(default_value = ".")]
-        path: String,
-
-        /// Order of the tags
-        #[arg(short, long, value_enum, default_value_t = tags::Sort::Name)]
-        sort: tags::Sort,
-    },
+    Tags(tags::Args),
     /// Creates a new markdown file from a template
     ///
     /// Templates are read from `.zl/templates/<name>.md` and rendered with Tera.
@@ -101,39 +58,5 @@ pub(crate) enum Command {
     /// If the note's folder matches the paths of a group in the config, the group's [note] and
     /// [extra] settings override the root ones. Use --group to choose a group explicitly.
     #[command(verbatim_doc_comment)]
-    New {
-        /// Path of the new markdown file
-        path: String,
-
-        /// Template of the new markdown file [default: note.default_template of the note's group,
-        /// otherwise of the root config]
-        #[arg(short, long)]
-        template: Option<String>,
-
-        /// Title of the new note [default: note.default_title of the note's group, otherwise of the
-        /// root config]
-        #[arg(long)]
-        title: Option<String>,
-
-        /// Group whose settings to apply, instead of the group whose paths match the note's folder
-        #[arg(short, long)]
-        group: Option<String>,
-
-        /// Additional template variable, can be repeated
-        #[arg(long = "var", value_name = "KEY=VALUE", value_parser = parse_key_value)]
-        vars: Vec<(String, String)>,
-    },
-}
-
-
-fn parse_key_value(s: &str) -> Result<(String, String), String> {
-    let (key, value) = s
-        .split_once('=')
-        .ok_or_else(|| format!("Invalid KEY=VALUE: no `=` found in `{}`", s))?;
-
-    if key.is_empty() {
-        return Err(format!("Invalid KEY=VALUE: empty key in `{}`", s));
-    }
-
-    Ok((key.to_string(), value.to_string()))
+    New(new::Args),
 }

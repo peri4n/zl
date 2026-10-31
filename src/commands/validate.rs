@@ -4,10 +4,17 @@ use anyhow::bail;
 
 use crate::index::Index;
 
+#[derive(clap::Args, Debug)]
+pub(crate) struct Args {
+    /// Markdown file or directory to validate
+    #[arg(default_value = ".")]
+    path: String,
+}
+
 /// Checks the notes at or below `path`. Updating the index parses every changed note, so notes that
 /// fail to parse and links to missing notes are known afterwards without parsing anything again.
-pub(crate) fn run(path: &str) -> anyhow::Result<()> {
-    let path = Path::new(path);
+pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
+    let path = Path::new(&args.path);
     let index = Index::open()?;
 
     // Problems of every checked note, an empty list means the note is fine

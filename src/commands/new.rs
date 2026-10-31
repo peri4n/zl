@@ -9,25 +9,43 @@ use crate::config::{CONFIG_DIR, Config};
 /// Variables provided to every template, which therefore can't be set with --var
 const BUILTIN_VARIABLES: &[&str] = &["title", "id", "date", "time", "datetime", "filename", "extra"];
 
-pub(crate) fn run(
-    path: &str,
-    template: Option<&str>,
-    title: Option<&str>,
-    group: Option<&str>,
-    vars: &[(String, String)],
-) -> anyhow::Result<()> {
-    let config = Config::from_path(&format!("{CONFIG_DIR}/config.toml"))?;
-    let path = Path::new(path);
+#[derive(clap::Args, Debug)]
+pub(crate) struct Args {
+    /// Path of the new markdown file
+    path: String,
 
-    let settings = config.note_settings(path, group)?;
-    let template = template.unwrap_or(settings.template);
-    let title = title.unwrap_or(settings.title);
+    /// Template of the new markdown file [default: note.default_template of the note's group,
+    /// otherwise of the root config]
+    #[arg(short, long)]
+    template: Option<String>,
+
+    /// Title of the new note [default: note.default_title of the note's group, otherwise of the
+    /// root config]
+    #[arg(long)]
+    title: Option<String>,
+
+    /// Group whose settings to apply, instead of the group whose paths match the note's folder
+    #[arg(short, long)]
+    group: Option<String>,
+
+    /// Additional template variable, can be repeated
+    #[arg(long = "var", value_name = "KEY=VALUE", value_parser = parse_key_value)]
+    vars: Vec<(String, String)>,
+}
+
+pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
+    let config = Config::from_path(&format!("{CONFIG_DIR}/config.toml"))?;
+    let path = Path::new(&args.path);
+
+    let settings = config.note_settings(path, args.group.as_deref())?;
+    let template = args.template.as_deref().unwrap_or(settings.template);
+    let title = args.title.as_deref().unwrap_or(settings.title);
 
     let mut templates = Tera::new();
     templates.load_from_glob(&format!("{CONFIG_DIR}/templates/**/*"))
         .context("Failed to load templates")?;
 
-    let context = build_context(path, title, &settings.extra, vars)?;
+    let context = build_context(path, title, &settings.extra, &args.vars)?;
     let content = templates.render(&format!("{}.md", template), &context)
         .with_context(|| format!("Failed to render template `{}`", template))?;
 
@@ -83,4 +101,16 @@ fn build_context(
     }
 
     Ok(context)
+}
+
+fn parse_key_value(s: &str) -> Result<(String, String), String> {
+    let (key, value) = s
+        .split_once('=')
+        .ok_or_else(|| format!("Invalid KEY=VALUE: no `=` found in `{}`", s))?;
+
+    if key.is_empty() {
+        return Err(format!("Invalid KEY=VALUE: empty key in `{}`", s));
+    }
+
+    Ok((key.to_string(), value.to_string()))
 }
