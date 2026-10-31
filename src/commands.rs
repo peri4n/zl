@@ -1,10 +1,12 @@
 pub(crate) mod config;
 pub(crate) mod init;
+pub(crate) mod list;
 pub(crate) mod new;
 pub(crate) mod tasks;
 pub(crate) mod validate;
 
 use clap::{Parser, Subcommand};
+use regex::Regex;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -35,6 +37,23 @@ pub(crate) enum Command {
         /// Only show tasks with this status
         #[arg(short, long, value_enum, default_value_t = tasks::TaskStatus::All)]
         status: tasks::TaskStatus,
+    },
+    /// Lists notes matching all given filters
+    ///
+    /// Tags are read from the `tags` field of the frontmatter. The title is the frontmatter
+    /// `title`, otherwise the first level 1 heading, otherwise the file name.
+    List {
+        /// Markdown file or directory to search
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Only list notes with this tag (case-insensitive), can be repeated to require several tags
+        #[arg(short, long = "tag", value_name = "TAG")]
+        tags: Vec<String>,
+
+        /// Only list notes whose title matches this regex, e.g. '(?i)^rust'
+        #[arg(long, value_name = "REGEX")]
+        title: Option<Regex>,
     },
     /// Creates a new markdown file from a template
     ///
