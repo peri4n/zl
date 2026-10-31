@@ -21,19 +21,17 @@ enum Placeholder {
     Filename,
     Title,
     Tags,
-    Link,
     MdLink,
     Modified,
 }
 
 impl Placeholder {
-    const ALL: [(&str, Placeholder); 8] = [
+    const ALL: [(&str, Placeholder); 7] = [
         ("path", Placeholder::Path),
         ("dir", Placeholder::Dir),
         ("filename", Placeholder::Filename),
         ("title", Placeholder::Title),
         ("tags", Placeholder::Tags),
-        ("link", Placeholder::Link),
         ("mdlink", Placeholder::MdLink),
         ("modified", Placeholder::Modified),
     ];
@@ -43,15 +41,12 @@ impl Placeholder {
     }
 
     fn render(self, note: &Note) -> String {
-        let filename = || note.path.file_stem().unwrap_or_default().to_string_lossy();
-
         match self {
             Placeholder::Path => note.path.display().to_string(),
             Placeholder::Dir => note.path.parent().map(|p| p.display().to_string()).unwrap_or_default(),
-            Placeholder::Filename => filename().into_owned(),
+            Placeholder::Filename => note.path.file_stem().unwrap_or_default().to_string_lossy().into_owned(),
             Placeholder::Title => note.title.clone(),
             Placeholder::Tags => note.tags.join(", "),
-            Placeholder::Link => format!("[[{}]]", filename()),
             Placeholder::MdLink => {
                 let path = note.path.display().to_string();
                 // Markdown link destinations can't contain spaces unless wrapped in angle brackets

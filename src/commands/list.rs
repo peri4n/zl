@@ -3,13 +3,14 @@ mod format;
 use std::path::Path;
 
 use anyhow::anyhow;
+use clap::Args;
 use regex::Regex;
 
 use crate::{config::{CONFIG_DIR, Config}, notes::{self, Note}};
 
 pub(crate) use format::Format;
 
-pub(crate) fn run(path: &str, tags: &[String], title: Option<&Regex>, format: Option<&Format>) -> anyhow::Result<()> {
+pub(crate) fn run(path: &str, filter: &Filter, format: Option<&Format>) -> anyhow::Result<()> {
     // The configured format is trimmed so notes without tags don't end in spaces,
     // an explicit --format is printed exactly as given
     let configured_format;
@@ -24,7 +25,7 @@ pub(crate) fn run(path: &str, tags: &[String], title: Option<&Regex>, format: Op
         }
     };
 
-    for note in notes::load_all(Path::new(path))?.filter(|note| matches(note, tags, title)) {
+    for note in notes::load_all(Path::new(path))?.filter(|note| filter.matches(note)) {
         let line = format.render(&note);
         println!("{}", if trim { line.trim_end() } else { &line });
     }
@@ -32,11 +33,31 @@ pub(crate) fn run(path: &str, tags: &[String], title: Option<&Regex>, format: Op
     Ok(())
 }
 
-fn matches(note: &Note, tags: &[String], title: Option<&Regex>) -> bool {
-    let has_all_tags = tags.iter().all(|wanted| {
-        let wanted = wanted.trim_start_matches('#').to_lowercase();
-        note.tags.iter().any(|tag| tag.to_lowercase() == wanted)
-    });
+/// Criteria a note has to meet to be listed, all given ones have to match
+#[derive(Args, Debug, Clone)]
+pub(crate) struct Filter {
+    /// Only list notes with this tag (case-insensitive), can be repeated to require several tags
+    #[arg(short, long = "tag", value_name = "TAG")]
+    tags: Vec<String>,
 
-    has_all_tags && title.is_none_or(|regex| regex.is_match(&note.title))
+    /// Only list notes whose title matches this regex, e.g. '(?i)^rust'
+    #[arg(long, value_name = "REGEX")]
+    title: Option<Regex>,
+
+    /// Only list notes without any links: markdown links and URLs
+    #[arg(long)]
+    no_links: bool,
+}
+
+impl Filter {
+    fn matches(&self, note: &Note) -> bool {
+        let has_all_tags = self.tags.iter().all(|wanted| {
+            let wanted = wanted.trim_start_matches('#').to_lowercase();
+            note.tags.iter().any(|tag| tag.to_lowercase() == wanted)
+        });
+
+        has_all_tags
+            && self.title.as_ref().is_none_or(|regex| regex.is_match(&note.title))
+            && (!self.no_links || note.links.is_empty())
+    }
 }

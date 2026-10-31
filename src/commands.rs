@@ -9,7 +9,6 @@ pub(crate) mod validate;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use regex::Regex;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -55,13 +54,8 @@ pub(crate) enum Command {
         #[arg(default_value = ".")]
         path: String,
 
-        /// Only list notes with this tag (case-insensitive), can be repeated to require several tags
-        #[arg(short, long = "tag", value_name = "TAG")]
-        tags: Vec<String>,
-
-        /// Only list notes whose title matches this regex, e.g. '(?i)^rust'
-        #[arg(long, value_name = "REGEX")]
-        title: Option<Regex>,
+        #[command(flatten)]
+        filter: list::Filter,
 
         /// Output format of each note [default: list.format from the config]
         ///
@@ -71,7 +65,6 @@ pub(crate) enum Command {
         ///   {filename}  File name without extension, e.g. zl
         ///   {title}     Title of the note
         ///   {tags}      Comma separated tags, e.g. rust, cli
-        ///   {link}      Wiki link to the note, e.g. [[zl]]
         ///   {mdlink}    Markdown link to the note, e.g. [zl Project](./projects/zl.md)
         ///   {modified}  Last modification date, e.g. 2026-10-31
         ///

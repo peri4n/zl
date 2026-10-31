@@ -1,4 +1,4 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{collections::HashMap, fs, path::{Path, PathBuf}};
 
 use anyhow::{Context, anyhow, bail};
 use markdown::{Constructs, ParseOptions, mdast::Node, to_mdast};
@@ -12,6 +12,8 @@ pub(crate) struct Note {
     pub(crate) title: String,
     /// Frontmatter `tags`
     pub(crate) tags: Vec<String>,
+    /// Targets of all links in the note: markdown links and autolinks
+    pub(crate) links: Vec<String>,
 }
 
 impl Note {
@@ -31,6 +33,7 @@ impl Note {
             path: path.to_path_buf(),
             title,
             tags: frontmatter.tags.map(Tags::into_vec).unwrap_or_default(),
+            links: links(&ast),
         })
     }
 }
@@ -75,6 +78,35 @@ impl Tags {
             .filter(|tag| !tag.is_empty())
             .map(str::to_string)
             .collect()
+    }
+}
+
+/// Link targets in document order. Reference links (`[text][ref]`) are resolved to the URL of their
+/// definition, code is skipped as markdown doesn't parse links in it.
+fn links(ast: &Node) -> Vec<String> {
+    let mut definitions = HashMap::new();
+    walk(ast, &mut |node| {
+        if let Node::Definition(definition) = node {
+            definitions.insert(definition.identifier.clone(), definition.url.clone());
+        }
+    });
+
+    let mut links = Vec::new();
+    walk(ast, &mut |node| match node {
+        Node::Link(link) => links.push(link.url.clone()),
+        Node::LinkReference(reference) => {
+            links.extend(definitions.get(&reference.identifier).cloned());
+        }
+        _ => {}
+    });
+
+    links
+}
+
+fn walk<'a>(node: &'a Node, visit: &mut impl FnMut(&'a Node)) {
+    visit(node);
+    for child in node.children().into_iter().flatten() {
+        walk(child, visit);
     }
 }
 
