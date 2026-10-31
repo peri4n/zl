@@ -1,0 +1,18 @@
+[workspace]
+# Versions are derived from conventional commits: `fix:` and `feat:` bump the patch version
+# while on 0.x, `feat!:` or a `BREAKING CHANGE:` footer bumps the minor version.
+changelog_update = true
+git_release_enable = true
+git_tag_name = "v{{ version }}"
+# Only release when there are user facing changes
+release_commits = "^(feat|fix|perf)"
+
+[changelog]
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug fixes" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Refactoring" },
+  { message = "^doc", group = "Documentation" },
+  { message = "^(chore|ci|build|test|style)", skip = true },
+]

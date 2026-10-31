@@ -1,9 +1,15 @@
 [package]
 name = "zl"
+authhors = ["Fabian Bull<contact@fbull.de>"]
 version = "0.1.0"
 edition = "2024"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "A minimal Zettelkasten CLI for markdown notes"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/peri4n/zl"
+readme = "README.md"
+keywords = ["zettelkasten", "notes", "markdown", "cli"]
+categories = ["command-line-utilities"]
+exclude = ["/.github", "/.envrc", "/flake.nix", "/flake.lock", "/logo.png", "/release-plz.toml"]
 
 [dependencies]
 anyhow = "1.0.104"
