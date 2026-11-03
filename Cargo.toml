@@ -24,6 +24,7 @@ rusqlite = { version = "0.41.1", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_norway = "0.9.42"
 tera = { version = "2.4.0", features = ["glob_fs"] }
+termtree = "1.0.0"
 toml = "1.1.8"
 
 [dev-dependencies]

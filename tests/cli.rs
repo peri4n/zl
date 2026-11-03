@@ -298,6 +298,62 @@ fn tags_counts_notes_per_tag() {
     );
 }
 
+/// Notes with nested tags: `a.md` [lang/rust, lang/go], `b.md` [lang], `c.md` [lang/rust/async, foo/]
+fn nested_tags_notebook() -> Notebook {
+    let notebook = Notebook::empty();
+    notebook.ok(&["init"]);
+    notebook.write("a.md", "---\ntags: [lang/rust, lang/go]\n---\n");
+    notebook.write("b.md", "---\ntags: [lang]\n---\n");
+    notebook.write("c.md", "---\ntags: [lang/rust/async, foo/]\n---\n");
+    notebook
+}
+
+#[test]
+fn tags_count_nested_tags_for_their_parents() {
+    let notebook = nested_tags_notebook();
+
+    assert_eq!(
+        notebook.ok(&["tags"]),
+        "1  foo\n3  lang\n1  lang/go\n2  lang/rust\n1  lang/rust/async\n"
+    );
+    assert_eq!(
+        notebook.ok(&["tags", "--sort", "count"]),
+        "3  lang\n2  lang/rust\n1  foo\n1  lang/go\n1  lang/rust/async\n"
+    );
+}
+
+#[test]
+fn tags_renders_nested_tags_as_tree() {
+    let notebook = nested_tags_notebook();
+
+    assert_eq!(
+        notebook.ok(&["tags", "--tree"]),
+        "foo (1)\nlang (3)\n├── go (1)\n└── rust (2)\n    └── async (1)\n"
+    );
+    assert_eq!(
+        notebook.ok(&["tags", "--tree", "--sort", "count"]),
+        "lang (3)\n├── rust (2)\n│   └── async (1)\n└── go (1)\nfoo (1)\n"
+    );
+}
+
+#[test]
+fn list_tag_filter_matches_nested_tags() {
+    let notebook = nested_tags_notebook();
+
+    assert_eq!(
+        notebook.ok(&["list", "-t", "lang", "--format", "{path}"]),
+        "a.md\nb.md\nc.md\n"
+    );
+    assert_eq!(
+        notebook.ok(&["list", "-t", "LANG/rust/", "--format", "{path} {tags}"]),
+        "a.md lang/rust, lang/go\nc.md lang/rust/async, foo\n"
+    );
+    assert_eq!(
+        notebook.ok(&["list", "-t", "rust", "--format", "{path}"]),
+        ""
+    );
+}
+
 #[test]
 fn tasks_filters_by_status() {
     let notebook = Notebook::new();

@@ -44,6 +44,8 @@ pub(crate) enum Command {
     /// `title`, otherwise the first level 1 heading, otherwise the file name.
     List(list::Args),
     /// Lists all tags used in the frontmatter of notes, with the number of notes using them
+    ///
+    /// Tags can be nested with `/`, a note tagged `lang/rust` also counts for `lang`.
     Tags(tags::Args),
     /// Creates a new markdown file from a template
     ///

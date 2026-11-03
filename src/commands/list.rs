@@ -5,7 +5,11 @@ use std::path::{Path, PathBuf};
 use anyhow::anyhow;
 use regex::Regex;
 
-use crate::{config::Config, index::Index, notes::Note};
+use crate::{
+    config::Config,
+    index::Index,
+    notes::{Note, normalize_tag},
+};
 
 use format::Format;
 
@@ -69,7 +73,8 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
 /// Criteria a note has to meet to be listed, all given ones have to match
 #[derive(clap::Args, Debug)]
 struct Filter {
-    /// Only list notes with this tag (case-insensitive), can be repeated to require several tags
+    /// Only list notes with this tag (case-insensitive), can be repeated to require several tags.
+    /// Nested tags match their parents, e.g. `-t lang` lists notes tagged `lang/rust`.
     #[arg(short, long = "tag", value_name = "TAG")]
     tags: Vec<String>,
 
@@ -120,8 +125,8 @@ impl Filter {
 
     fn matches(&self, note: &Note) -> bool {
         let has_all_tags = self.tags.iter().all(|wanted| {
-            let wanted = wanted.trim_start_matches('#').to_lowercase();
-            note.tags.iter().any(|tag| tag.to_lowercase() == wanted)
+            let wanted = normalize_tag(wanted).to_lowercase();
+            note.implied_tags().any(|tag| tag.to_lowercase() == wanted)
         });
 
         has_all_tags

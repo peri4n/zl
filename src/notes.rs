@@ -22,7 +22,7 @@ pub(crate) struct Note {
     pub(crate) path: PathBuf,
     /// Frontmatter `title`, otherwise the first level 1 heading, otherwise the file name
     pub(crate) title: String,
-    /// Frontmatter `tags`
+    /// Frontmatter `tags`, nested ones separated by `/`, e.g. `lang/rust`
     pub(crate) tags: Vec<String>,
     /// All links in the note: markdown links and autolinks
     pub(crate) links: Vec<Link>,
@@ -76,6 +76,27 @@ impl Note {
             tags: frontmatter.tags.map(Tags::into_vec).unwrap_or_default(),
         })
     }
+
+    /// The tags of the note together with their ancestors, as a nested tag implies its parents:
+    /// `a/b/c` yields `a`, `a/b` and `a/b/c`. May yield the same tag several times.
+    pub(crate) fn implied_tags(&self) -> impl Iterator<Item = &str> {
+        self.tags.iter().flat_map(|tag| {
+            tag.match_indices('/')
+                .map(|(end, _)| &tag[..end])
+                .chain([tag.as_str()])
+        })
+    }
+}
+
+/// Removes a leading `#` and empty segments of nested tags, e.g. `#a//b/ ` becomes `a/b`
+pub(crate) fn normalize_tag(tag: &str) -> String {
+    tag.trim()
+        .trim_start_matches('#')
+        .split('/')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -119,9 +140,8 @@ impl Tags {
         };
 
         tags.iter()
-            .map(|tag| tag.trim().trim_start_matches('#'))
+            .map(|tag| normalize_tag(tag))
             .filter(|tag| !tag.is_empty())
-            .map(str::to_string)
             .collect()
     }
 }
