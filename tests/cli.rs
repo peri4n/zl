@@ -341,7 +341,10 @@ fn validate_reports_invalid_notes_and_broken_links() {
     assert_eq!(notebook.ok(&["validate", "--quiet"]), "");
 
     notebook.write("broken.md", "---\ntags: {a: 1}\n---\n");
-    notebook.write("lonely.md", "# Lonely\n\n[gone](gone.md)\n");
+    notebook.write(
+        "lonely.md",
+        "# Lonely\n\n[gone](gone.md)\n[gone too](Gone%20Too)\n",
+    );
 
     let (stdout, _) = notebook.fails(&["validate"]);
     assert!(
@@ -352,6 +355,10 @@ fn validate_reports_invalid_notes_and_broken_links() {
         stdout.contains("FAIL  lonely.md:3: broken link `gone.md`"),
         "{stdout}"
     );
+    assert!(
+        stdout.contains("FAIL  lonely.md:4: broken link `Gone%20Too`"),
+        "{stdout}"
+    );
     assert!(stdout.contains("ok    hub.md"), "{stdout}");
     assert!(
         stdout.ends_with("5 file(s) checked, 2 failed\n"),
@@ -359,13 +366,17 @@ fn validate_reports_invalid_notes_and_broken_links() {
     );
 
     let (stdout, _) = notebook.fails(&["validate", "--quiet"]);
-    assert_eq!(stdout.lines().count(), 2, "{stdout}");
+    assert_eq!(stdout.lines().count(), 3, "{stdout}");
     assert!(
         stdout.contains("FAIL  broken.md: Invalid frontmatter"),
         "{stdout}"
     );
     assert!(
         stdout.contains("FAIL  lonely.md:3: broken link `gone.md`"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("FAIL  lonely.md:4: broken link `Gone%20Too`"),
         "{stdout}"
     );
 }

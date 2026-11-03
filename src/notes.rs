@@ -158,7 +158,8 @@ fn links(ast: &Node, note_path: &Path) -> Vec<Link> {
 
 /// Path of the note `url` links to, relative to the notebook root, or `None` if it links to anything
 /// else than a markdown file. Relative URLs are resolved against the folder of `note_path`, URLs
-/// starting with `/` against the notebook root.
+/// starting with `/` against the notebook root. URLs without an extension, like `Some%20Note`, link
+/// to the note of that name, `Some Note.md`.
 pub(crate) fn resolve_link(note_path: &Path, url: &str) -> Option<PathBuf> {
     if has_scheme(url) {
         return None;
@@ -179,10 +180,12 @@ pub(crate) fn resolve_link(note_path: &Path, url: &str) -> Option<PathBuf> {
     };
     let target = normalize(&target);
 
-    target
-        .extension()
-        .is_some_and(|ext| ext == "md")
-        .then_some(target)
+    match target.extension() {
+        Some(ext) if ext == "md" => Some(target),
+        // A trailing `/` links to a folder, not a note
+        None if !path.ends_with('/') => Some(target.with_extension("md")),
+        _ => None,
+    }
 }
 
 /// Whether `url` starts with a URI scheme like `https:` or `mailto:`
@@ -307,6 +310,17 @@ mod tests {
         assert_eq!(resolve("a.md", "b.md?x=1"), Some("b.md".into()));
         assert_eq!(resolve("a.md", "note%20one.md"), Some("note one.md".into()));
         assert_eq!(resolve("a.md", "my note.md"), Some("my note.md".into()));
+    }
+
+    #[test]
+    fn resolves_links_without_extension() {
+        assert_eq!(resolve("a.md", "b"), Some("b.md".into()));
+        assert_eq!(
+            resolve("dir/a.md", "Retrieval%20Practice"),
+            Some("dir/Retrieval Practice.md".into())
+        );
+        assert_eq!(resolve("a.md", "b#intro"), Some("b.md".into()));
+        assert_eq!(resolve("a.md", "dir/"), None);
     }
 
     #[test]

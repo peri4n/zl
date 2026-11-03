@@ -15,8 +15,9 @@ use crate::{
     paths::normalize,
 };
 
-/// Bumped on every schema change, a database with another version is rebuilt from scratch
-const SCHEMA_VERSION: i32 = 2;
+/// Bumped on every change to the schema or to what is stored in it, e.g. how links are resolved.
+/// A database with another version is rebuilt from scratch.
+const SCHEMA_VERSION: i32 = 3;
 
 const SCHEMA: &str = "
     CREATE TABLE notes (
