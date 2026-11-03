@@ -14,7 +14,13 @@ use clap::{Parser, Subcommand};
 #[command(author, version, about, long_about = None)]
 pub(crate) struct Cli {
     /// Notebook to work on, instead of the current directory. All paths are relative to it.
-    #[arg(short = 'C', long, global = true, value_name = "DIR", env = "ZL_NOTEBOOK_DIR")]
+    #[arg(
+        short = 'C',
+        long,
+        global = true,
+        value_name = "DIR",
+        env = "ZL_NOTEBOOK_DIR"
+    )]
     pub(crate) notebook_dir: Option<PathBuf>,
 
     #[command(subcommand)]

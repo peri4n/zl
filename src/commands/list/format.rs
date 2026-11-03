@@ -43,8 +43,17 @@ impl Placeholder {
     fn render(self, note: &Note) -> String {
         match self {
             Placeholder::Path => note.path.display().to_string(),
-            Placeholder::Dir => note.path.parent().map(|p| p.display().to_string()).unwrap_or_default(),
-            Placeholder::Filename => note.path.file_stem().unwrap_or_default().to_string_lossy().into_owned(),
+            Placeholder::Dir => note
+                .path
+                .parent()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
+            Placeholder::Filename => note
+                .path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
             Placeholder::Title => note.title.clone(),
             Placeholder::Tags => note.tags.join(", "),
             Placeholder::MdLink => {
@@ -66,7 +75,8 @@ impl Placeholder {
 
 impl Format {
     pub(crate) fn render(&self, note: &Note) -> String {
-        self.0.iter()
+        self.0
+            .iter()
             .map(|segment| match segment {
                 Segment::Literal(text) => text.clone(),
                 Segment::Placeholder(placeholder) => placeholder.render(note),
@@ -92,12 +102,20 @@ impl FromStr for Format {
                     literal.push('{');
                 }
                 '{' => {
-                    let end = rest.find('}')
+                    let end = rest
+                        .find('}')
                         .ok_or("unclosed `{` in format, use `{{` for a literal brace")?;
                     let name = &rest[..end];
                     let placeholder = Placeholder::from_name(name).ok_or_else(|| {
-                        let names = Placeholder::ALL.iter().map(|(n, _)| format!("{{{}}}", n)).collect::<Vec<_>>();
-                        format!("unknown placeholder `{{{}}}`, expected one of: {}", name, names.join(", "))
+                        let names = Placeholder::ALL
+                            .iter()
+                            .map(|(n, _)| format!("{{{}}}", n))
+                            .collect::<Vec<_>>();
+                        format!(
+                            "unknown placeholder `{{{}}}`, expected one of: {}",
+                            name,
+                            names.join(", ")
+                        )
                     })?;
 
                     if !literal.is_empty() {
@@ -110,7 +128,9 @@ impl FromStr for Format {
                     rest = &rest[1..];
                     literal.push('}');
                 }
-                '}' => return Err("unmatched `}` in format, use `}}` for a literal brace".to_string()),
+                '}' => {
+                    return Err("unmatched `}` in format, use `}}` for a literal brace".to_string());
+                }
                 // Most shells pass `\t` literally, so support the common escapes for TSV like output
                 '\\' if rest.starts_with(['t', 'n', '\\']) => {
                     literal.push(match &rest[..1] {

@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, fs, path::{Path, PathBuf}};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, anyhow, bail};
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
@@ -85,7 +89,8 @@ impl Config {
         }
 
         let config_str = fs::read_to_string(&path).context("Failed to read config file")?;
-        let mut config: Config = toml::from_str(&config_str).context("Failed to parse config file")?;
+        let mut config: Config =
+            toml::from_str(&config_str).context("Failed to parse config file")?;
 
         for (name, group) in &mut config.group {
             group.matcher = build_matcher(&group.paths)
@@ -107,10 +112,18 @@ impl Config {
 
     /// Settings for a new note at `note_path`, taken from the group named `group`, otherwise from the
     /// group whose paths match the note's folder. Settings the group doesn't set come from the root config.
-    pub(crate) fn note_settings(&self, note_path: &Path, group: Option<&str>) -> anyhow::Result<NoteSettings<'_>> {
+    pub(crate) fn note_settings(
+        &self,
+        note_path: &Path,
+        group: Option<&str>,
+    ) -> anyhow::Result<NoteSettings<'_>> {
         let group = match group {
             Some(name) => Some(self.group.get_key_value(name).ok_or_else(|| {
-                anyhow!("Unknown group `{}`, configured groups: {}", name, self.group_names().join(", "))
+                anyhow!(
+                    "Unknown group `{}`, configured groups: {}",
+                    name,
+                    self.group_names().join(", ")
+                )
             })?),
             None => self.matching_group(note_path)?,
         };
@@ -119,14 +132,28 @@ impl Config {
             group: None,
             template: &self.note.default_template,
             title: &self.note.default_title,
-            extra: self.extra.iter().map(|(key, value)| (key.as_str(), value)).collect(),
+            extra: self
+                .extra
+                .iter()
+                .map(|(key, value)| (key.as_str(), value))
+                .collect(),
         };
 
         if let Some((name, group)) = group {
             settings.group = Some(name);
-            settings.template = group.note.default_template.as_deref().unwrap_or(settings.template);
-            settings.title = group.note.default_title.as_deref().unwrap_or(settings.title);
-            settings.extra.extend(group.extra.iter().map(|(key, value)| (key.as_str(), value)));
+            settings.template = group
+                .note
+                .default_template
+                .as_deref()
+                .unwrap_or(settings.template);
+            settings.title = group
+                .note
+                .default_title
+                .as_deref()
+                .unwrap_or(settings.title);
+            settings
+                .extra
+                .extend(group.extra.iter().map(|(key, value)| (key.as_str(), value)));
         }
 
         Ok(settings)
@@ -140,7 +167,9 @@ impl Config {
         let note_path = normalize(note_path);
         let folder = note_path.parent().unwrap_or(Path::new(""));
 
-        let matches: Vec<_> = self.group.iter()
+        let matches: Vec<_> = self
+            .group
+            .iter()
             .filter(|(_, group)| group.matcher.is_match(folder))
             .collect();
 
@@ -149,8 +178,11 @@ impl Config {
             [group] => Ok(Some(*group)),
             _ => {
                 let names: Vec<_> = matches.iter().map(|(name, _)| name.as_str()).collect();
-                bail!("{} matches the paths of several groups ({}), choose one with --group",
-                    note_path.display(), names.join(", "))
+                bail!(
+                    "{} matches the paths of several groups ({}), choose one with --group",
+                    note_path.display(),
+                    names.join(", ")
+                )
             }
         }
     }
@@ -229,7 +261,9 @@ fn build_matcher(paths: &[String]) -> anyhow::Result<GlobSet> {
     let mut builder = GlobSetBuilder::new();
 
     for path in paths {
-        let pattern = normalize(Path::new(path.trim_end_matches('/'))).to_string_lossy().into_owned();
+        let pattern = normalize(Path::new(path.trim_end_matches('/')))
+            .to_string_lossy()
+            .into_owned();
         let mut patterns = vec![pattern.as_str()];
         if let Some(folder) = pattern.strip_suffix("/**") {
             patterns.push(folder);

@@ -1,7 +1,15 @@
-use std::{collections::HashMap, fs, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, anyhow};
-use markdown::{Constructs, ParseOptions, mdast::{ListItem, Node}, to_mdast};
+use markdown::{
+    Constructs, ParseOptions,
+    mdast::{ListItem, Node},
+    to_mdast,
+};
 use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 
@@ -45,13 +53,20 @@ impl Note {
     pub(crate) fn load(path: &Path, parse_options: &ParseOptions) -> anyhow::Result<Self> {
         let path = normalize(path);
         let input = fs::read_to_string(&path).context("Failed to read file")?;
-        let ast = to_mdast(&input, parse_options).map_err(|e| anyhow!("Failed to parse markdown: {}", e))?;
+        let ast = to_mdast(&input, parse_options)
+            .map_err(|e| anyhow!("Failed to parse markdown: {}", e))?;
 
         let frontmatter = Frontmatter::from_ast(&ast).context("Invalid frontmatter")?;
 
-        let title = frontmatter.title
+        let title = frontmatter
+            .title
             .or_else(|| first_heading(&ast))
-            .unwrap_or_else(|| path.file_stem().unwrap_or_default().to_string_lossy().into_owned());
+            .unwrap_or_else(|| {
+                path.file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned()
+            });
 
         Ok(Note {
             links: links(&ast, &path),
@@ -74,7 +89,9 @@ impl Frontmatter {
     /// Frontmatter is always the first node of the document, if present
     fn from_ast(ast: &Node) -> anyhow::Result<Self> {
         let frontmatter = match ast.children().and_then(|children| children.first()) {
-            Some(Node::Yaml(yaml)) => serde_norway::from_str::<Option<Frontmatter>>(&yaml.value)?.unwrap_or_default(),
+            Some(Node::Yaml(yaml)) => {
+                serde_norway::from_str::<Option<Frontmatter>>(&yaml.value)?.unwrap_or_default()
+            }
             Some(Node::Toml(toml)) => toml::from_str(&toml.value)?,
             _ => Frontmatter::default(),
         };
@@ -85,7 +102,10 @@ impl Frontmatter {
 
 /// Tags as a list (`tags: [a, b]`) or as a single string (`tags: a, b` or `tags: a b`)
 #[derive(Debug, Deserialize)]
-#[serde(untagged, expecting = "expected `tags` to be a list or a comma separated string")]
+#[serde(
+    untagged,
+    expecting = "expected `tags` to be a list or a comma separated string"
+)]
 enum Tags {
     List(Vec<String>),
     Text(String),
@@ -144,23 +164,34 @@ pub(crate) fn resolve_link(note_path: &Path, url: &str) -> Option<PathBuf> {
         return None;
     }
 
-    let path = url.split(['#', '?']).next().filter(|path| !path.is_empty())?;
+    let path = url
+        .split(['#', '?'])
+        .next()
+        .filter(|path| !path.is_empty())?;
     let path = percent_decode_str(path).decode_utf8().ok()?;
 
     let target = match path.strip_prefix('/') {
         Some(from_root) => PathBuf::from(from_root),
-        None => note_path.parent().unwrap_or(Path::new("")).join(path.as_ref()),
+        None => note_path
+            .parent()
+            .unwrap_or(Path::new(""))
+            .join(path.as_ref()),
     };
     let target = normalize(&target);
 
-    target.extension().is_some_and(|ext| ext == "md").then_some(target)
+    target
+        .extension()
+        .is_some_and(|ext| ext == "md")
+        .then_some(target)
 }
 
 /// Whether `url` starts with a URI scheme like `https:` or `mailto:`
 fn has_scheme(url: &str) -> bool {
     url.split_once(':').is_some_and(|(scheme, _)| {
         scheme.starts_with(|c: char| c.is_ascii_alphabetic())
-            && scheme.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+            && scheme
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
     })
 }
 
@@ -171,7 +202,10 @@ fn tasks(ast: &Node, input: &str) -> Vec<Task> {
             && let Some(checked) = item.checked
         {
             tasks.push(Task {
-                line: item.position.as_ref().map_or(0, |position| position.start.line),
+                line: item
+                    .position
+                    .as_ref()
+                    .map_or(0, |position| position.start.line),
                 checked,
                 text: task_text(item, input),
             });
@@ -225,7 +259,10 @@ pub(crate) fn markdown_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     for entry in fs::read_dir(dir)? {
         let path = entry?.path();
 
-        if path.file_name().is_some_and(|name| name.to_string_lossy().starts_with('.')) {
+        if path
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+        {
             continue;
         }
 
@@ -253,9 +290,15 @@ mod tests {
     fn resolves_relative_links() {
         assert_eq!(resolve("a.md", "b.md"), Some("b.md".into()));
         assert_eq!(resolve("dir/a.md", "b.md"), Some("dir/b.md".into()));
-        assert_eq!(resolve("dir/a.md", "./sub/b.md"), Some("dir/sub/b.md".into()));
+        assert_eq!(
+            resolve("dir/a.md", "./sub/b.md"),
+            Some("dir/sub/b.md".into())
+        );
         assert_eq!(resolve("dir/a.md", "../b.md"), Some("b.md".into()));
-        assert_eq!(resolve("dir/a.md", "/other/b.md"), Some("other/b.md".into()));
+        assert_eq!(
+            resolve("dir/a.md", "/other/b.md"),
+            Some("other/b.md".into())
+        );
     }
 
     #[test]

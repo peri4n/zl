@@ -40,9 +40,19 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     index.warn_skipped();
 
     for note in index.notes(Path::new(&args.path))? {
-        for task in note.tasks.iter().filter(|task| args.status.matches(task.checked)) {
+        for task in note
+            .tasks
+            .iter()
+            .filter(|task| args.status.matches(task.checked))
+        {
             let marker = if task.checked { "[x]" } else { "[ ]" };
-            println!("{}:{}  {} {}", note.path.display(), task.line, marker, task.text);
+            println!(
+                "{}:{}  {} {}",
+                note.path.display(),
+                task.line,
+                marker,
+                task.text
+            );
         }
     }
 

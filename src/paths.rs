@@ -9,7 +9,12 @@ pub(crate) fn normalize(path: &Path) -> PathBuf {
     for component in path.components() {
         match component {
             Component::CurDir => {}
-            Component::ParentDir if matches!(normalized.components().next_back(), Some(Component::Normal(_))) => {
+            Component::ParentDir
+                if matches!(
+                    normalized.components().next_back(),
+                    Some(Component::Normal(_))
+                ) =>
+            {
                 normalized.pop();
             }
             component => normalized.push(component),
@@ -25,8 +30,14 @@ mod tests {
 
     #[test]
     fn normalizes_relative_paths() {
-        assert_eq!(normalize(Path::new("./journal/a.md")), Path::new("journal/a.md"));
-        assert_eq!(normalize(Path::new("journal/x/../a.md")), Path::new("journal/a.md"));
+        assert_eq!(
+            normalize(Path::new("./journal/a.md")),
+            Path::new("journal/a.md")
+        );
+        assert_eq!(
+            normalize(Path::new("journal/x/../a.md")),
+            Path::new("journal/a.md")
+        );
         assert_eq!(normalize(Path::new("journal/..")), Path::new(""));
         assert_eq!(normalize(Path::new("../a.md")), Path::new("../a.md"));
         assert_eq!(normalize(Path::new("a/../../b.md")), Path::new("../b.md"));

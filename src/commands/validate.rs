@@ -9,6 +9,10 @@ pub(crate) struct Args {
     /// Markdown file or directory to validate
     #[arg(default_value = ".")]
     path: String,
+
+    /// Only print problems, without the files that passed and the summary
+    #[arg(short, long)]
+    quiet: bool,
 }
 
 /// Checks the notes at or below `path`. Updating the index parses every changed note, so notes that
@@ -23,17 +27,27 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
         problems.entry(note.path).or_default();
     }
     for (path, error) in index.skipped(path)? {
-        problems.entry(path.clone()).or_default().push(format!("{}: {:#}", path.display(), error));
+        problems
+            .entry(path.clone())
+            .or_default()
+            .push(format!("{}: {:#}", path.display(), error));
     }
     for link in index.broken_links(path)? {
-        let problem = format!("{}:{}: broken link `{}`", link.path.display(), link.line, link.url);
+        let problem = format!(
+            "{}:{}: broken link `{}`",
+            link.path.display(),
+            link.line,
+            link.url
+        );
         problems.entry(link.path).or_default().push(problem);
     }
 
     let mut failed = 0;
     for (path, problems) in &problems {
         if problems.is_empty() {
-            println!("ok    {}", path.display());
+            if !args.quiet {
+                println!("ok    {}", path.display());
+            }
         } else {
             failed += 1;
             for problem in problems {
@@ -42,7 +56,9 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
         }
     }
 
-    println!("\n{} file(s) checked, {} failed", problems.len(), failed);
+    if !args.quiet {
+        println!("\n{} file(s) checked, {} failed", problems.len(), failed);
+    }
 
     if failed > 0 {
         bail!("{} file(s) failed validation", failed);

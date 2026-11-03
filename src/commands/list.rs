@@ -30,7 +30,12 @@ pub(crate) struct Args {
     ///   {modified}  Last modification date, e.g. 2026-10-31
     ///
     /// Use {{ and }} for literal braces, \t and \n for tabs and newlines.
-    #[arg(long, value_name = "FORMAT", allow_hyphen_values = true, verbatim_doc_comment)]
+    #[arg(
+        long,
+        value_name = "FORMAT",
+        allow_hyphen_values = true,
+        verbatim_doc_comment
+    )]
     format: Option<Format>,
 }
 
@@ -42,7 +47,8 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
         Some(format) => (format, false),
         None => {
             let config = Config::load_or_default()?;
-            configured_format = config.list_format()
+            configured_format = config
+                .list_format()
                 .parse::<Format>()
                 .map_err(|e| anyhow!("Invalid list.format in config: {}", e))?;
             (&configured_format, true)
@@ -88,13 +94,25 @@ impl Filter {
     /// Notes at or below `path` matching all criteria
     fn apply(&self, index: &Index, path: &Path) -> anyhow::Result<Vec<Note>> {
         // Link criteria depend on all notes of the notebook, not just the note itself
-        let backlinks = self.links_to.as_deref().map(|note| index.backlinks(note)).transpose()?;
-        let orphans = if self.orphan { Some(index.orphans()?) } else { None };
+        let backlinks = self
+            .links_to
+            .as_deref()
+            .map(|note| index.backlinks(note))
+            .transpose()?;
+        let orphans = if self.orphan {
+            Some(index.orphans()?)
+        } else {
+            None
+        };
 
         let notes = index.notes(path)?.into_iter().filter(|note| {
             self.matches(note)
-                && backlinks.as_ref().is_none_or(|paths| paths.contains(&note.path))
-                && orphans.as_ref().is_none_or(|paths| paths.contains(&note.path))
+                && backlinks
+                    .as_ref()
+                    .is_none_or(|paths| paths.contains(&note.path))
+                && orphans
+                    .as_ref()
+                    .is_none_or(|paths| paths.contains(&note.path))
         });
 
         Ok(notes.collect())
@@ -107,7 +125,10 @@ impl Filter {
         });
 
         has_all_tags
-            && self.title.as_ref().is_none_or(|regex| regex.is_match(&note.title))
+            && self
+                .title
+                .as_ref()
+                .is_none_or(|regex| regex.is_match(&note.title))
             && (!self.no_links || note.links.is_empty())
     }
 }

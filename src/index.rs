@@ -85,7 +85,10 @@ impl Index {
             connection
         };
 
-        let mut index = Index { connection, skipped: Vec::new() };
+        let mut index = Index {
+            connection,
+            skipped: Vec::new(),
+        };
         index.refresh().context("Failed to update the index")?;
 
         Ok(index)
@@ -100,9 +103,15 @@ impl Index {
     }
 
     /// Notes at or below `path` that couldn't be parsed and therefore aren't indexed, with the reason
-    pub(crate) fn skipped(&self, path: &Path) -> anyhow::Result<impl Iterator<Item = &(PathBuf, anyhow::Error)>> {
+    pub(crate) fn skipped(
+        &self,
+        path: &Path,
+    ) -> anyhow::Result<impl Iterator<Item = &(PathBuf, anyhow::Error)>> {
         let prefix = relative_to_root(path)?;
-        Ok(self.skipped.iter().filter(move |(path, _)| path.starts_with(&prefix)))
+        Ok(self
+            .skipped
+            .iter()
+            .filter(move |(path, _)| path.starts_with(&prefix)))
     }
 
     /// All notes at or below `path`, ordered by path
@@ -110,20 +119,39 @@ impl Index {
         let prefix = relative_to_root(path)?;
 
         let mut notes: HashMap<i64, Note> = HashMap::new();
-        let mut statement = self.connection.prepare("SELECT id, path, title FROM notes")?;
+        let mut statement = self
+            .connection
+            .prepare("SELECT id, path, title FROM notes")?;
         let rows = statement.query_map([], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
         })?;
         for row in rows {
             let (id, path, title) = row?;
             let path = PathBuf::from(path);
             if path.starts_with(&prefix) {
-                notes.insert(id, Note { path, title, tags: Vec::new(), links: Vec::new(), tasks: Vec::new() });
+                notes.insert(
+                    id,
+                    Note {
+                        path,
+                        title,
+                        tags: Vec::new(),
+                        links: Vec::new(),
+                        tasks: Vec::new(),
+                    },
+                );
             }
         }
 
-        let mut statement = self.connection.prepare("SELECT note_id, name FROM tags ORDER BY note_id, position")?;
-        let rows = statement.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?;
+        let mut statement = self
+            .connection
+            .prepare("SELECT note_id, name FROM tags ORDER BY note_id, position")?;
+        let rows = statement.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
         for row in rows {
             let (id, name) = row?;
             if let Some(note) = notes.get_mut(&id) {
@@ -131,8 +159,9 @@ impl Index {
             }
         }
 
-        let mut statement = self.connection
-            .prepare("SELECT source_id, url, line, target_path FROM links ORDER BY source_id, position")?;
+        let mut statement = self.connection.prepare(
+            "SELECT source_id, url, line, target_path FROM links ORDER BY source_id, position",
+        )?;
         let rows = statement.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -150,12 +179,17 @@ impl Index {
             }
         }
 
-        let mut statement = self.connection
+        let mut statement = self
+            .connection
             .prepare("SELECT note_id, line, checked, text FROM tasks ORDER BY note_id, position")?;
         let rows = statement.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
-                Task { line: row.get::<_, i64>(1)? as usize, checked: row.get(2)?, text: row.get(3)? },
+                Task {
+                    line: row.get::<_, i64>(1)? as usize,
+                    checked: row.get(2)?,
+                    text: row.get(3)?,
+                },
             ))
         })?;
         for row in rows {
@@ -209,7 +243,10 @@ impl Index {
         })?;
 
         let links: Vec<BrokenLink> = rows.collect::<Result<_, _>>()?;
-        Ok(links.into_iter().filter(|link| link.path.starts_with(&prefix)).collect())
+        Ok(links
+            .into_iter()
+            .filter(|link| link.path.starts_with(&prefix))
+            .collect())
     }
 
     fn paths(&self, sql: &str, params: impl rusqlite::Params) -> anyhow::Result<HashSet<PathBuf>> {
@@ -227,7 +264,8 @@ impl Index {
         let mut indexed: HashMap<String, (i64, i64)> = HashMap::new();
         {
             let mut statement = transaction.prepare("SELECT path, modified, size FROM notes")?;
-            let rows = statement.query_map([], |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?))))?;
+            let rows =
+                statement.query_map([], |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?))))?;
             for row in rows {
                 let (path, stamp) = row?;
                 indexed.insert(path, stamp);
@@ -235,10 +273,13 @@ impl Index {
         }
 
         let mut changed = Vec::new();
-        for file in notes::markdown_files(Path::new(".")).context("Failed to read the notebook directory")? {
+        for file in notes::markdown_files(Path::new("."))
+            .context("Failed to read the notebook directory")?
+        {
             let path = normalize(&file);
             let key = path_key(&path);
-            let stamp = file_stamp(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+            let stamp =
+                file_stamp(&path).with_context(|| format!("Failed to read {}", path.display()))?;
 
             if indexed.remove(&key) != Some(stamp) {
                 changed.push((path, key, stamp));
@@ -285,7 +326,8 @@ fn open_file(path: &Path) -> anyhow::Result<Connection> {
     };
 
     open().or_else(|_| {
-        fs::remove_file(path).with_context(|| format!("Failed to remove broken index {}", path.display()))?;
+        fs::remove_file(path)
+            .with_context(|| format!("Failed to remove broken index {}", path.display()))?;
         open().with_context(|| format!("Failed to create index {}", path.display()))
     })
 }
@@ -309,19 +351,27 @@ fn prepare(connection: &Connection) -> rusqlite::Result<()> {
     }
 
     // Fails on files that aren't SQLite databases, which `open` alone doesn't notice
-    connection.query_row("SELECT count(*) FROM notes", [], |_| Ok(())).optional()?;
+    connection
+        .query_row("SELECT count(*) FROM notes", [], |_| Ok(()))
+        .optional()?;
 
     Ok(())
 }
 
-fn insert(transaction: &Transaction, key: &str, note: &Note, (modified, size): (i64, i64)) -> rusqlite::Result<()> {
+fn insert(
+    transaction: &Transaction,
+    key: &str,
+    note: &Note,
+    (modified, size): (i64, i64),
+) -> rusqlite::Result<()> {
     transaction
         .prepare_cached("INSERT INTO notes (path, title, modified, size) VALUES (?1, ?2, ?3, ?4)")?
         .execute(params![key, note.title, modified, size])?;
     let id = transaction.last_insert_rowid();
 
-    let mut insert_tag =
-        transaction.prepare_cached("INSERT INTO tags (note_id, position, name, key) VALUES (?1, ?2, ?3, ?4)")?;
+    let mut insert_tag = transaction.prepare_cached(
+        "INSERT INTO tags (note_id, position, name, key) VALUES (?1, ?2, ?3, ?4)",
+    )?;
     for (position, tag) in note.tags.iter().enumerate() {
         insert_tag.execute(params![id, position as i64, tag, tag.to_lowercase()])?;
     }
@@ -331,14 +381,26 @@ fn insert(transaction: &Transaction, key: &str, note: &Note, (modified, size): (
     )?;
     for (position, link) in note.links.iter().enumerate() {
         let target = link.target.as_deref().map(path_key);
-        insert_link.execute(params![id, position as i64, link.line as i64, link.url, target])?;
+        insert_link.execute(params![
+            id,
+            position as i64,
+            link.line as i64,
+            link.url,
+            target
+        ])?;
     }
 
     let mut insert_task = transaction.prepare_cached(
         "INSERT INTO tasks (note_id, position, line, checked, text) VALUES (?1, ?2, ?3, ?4, ?5)",
     )?;
     for (position, task) in note.tasks.iter().enumerate() {
-        insert_task.execute(params![id, position as i64, task.line as i64, task.checked, task.text])?;
+        insert_task.execute(params![
+            id,
+            position as i64,
+            task.line as i64,
+            task.checked,
+            task.text
+        ])?;
     }
 
     Ok(())
@@ -347,7 +409,8 @@ fn insert(transaction: &Transaction, key: &str, note: &Note, (modified, size): (
 /// Modification time in ns and size of a file, if either changed the file has to be re-parsed
 fn file_stamp(path: &Path) -> std::io::Result<(i64, i64)> {
     let metadata = fs::metadata(path)?;
-    let modified = metadata.modified()?
+    let modified = metadata
+        .modified()?
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_nanos() as i64);
 
@@ -377,5 +440,11 @@ fn relative_to_root(path: &Path) -> anyhow::Result<PathBuf> {
     let path = path.canonicalize()?;
     path.strip_prefix(&root)
         .map(Path::to_path_buf)
-        .map_err(|_| anyhow!("{} is outside of the notebook {}", path.display(), root.display()))
+        .map_err(|_| {
+            anyhow!(
+                "{} is outside of the notebook {}",
+                path.display(),
+                root.display()
+            )
+        })
 }

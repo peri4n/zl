@@ -38,12 +38,22 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
 
     for note in index.notes(Path::new(&args.path))? {
         // A note listing the same tag twice is still a single use
-        let mut note_tags: Vec<_> = note.tags.into_iter().map(|tag| (tag.to_lowercase(), tag)).collect();
+        let mut note_tags: Vec<_> = note
+            .tags
+            .into_iter()
+            .map(|tag| (tag.to_lowercase(), tag))
+            .collect();
         note_tags.sort();
         note_tags.dedup_by(|(a, _), (b, _)| a == b);
 
         for (key, tag) in note_tags {
-            usages.entry(key).or_insert(TagUsage { name: tag, count: 0 }).count += 1;
+            usages
+                .entry(key)
+                .or_insert(TagUsage {
+                    name: tag,
+                    count: 0,
+                })
+                .count += 1;
         }
     }
 
@@ -53,7 +63,11 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
         usages.sort_by_key(|usage| Reverse(usage.count));
     }
 
-    let width = usages.iter().map(|usage| usage.count.to_string().len()).max().unwrap_or(0);
+    let width = usages
+        .iter()
+        .map(|usage| usage.count.to_string().len())
+        .max()
+        .unwrap_or(0);
     for usage in usages {
         println!("{:>width$}  {}", usage.count, usage.name);
     }
