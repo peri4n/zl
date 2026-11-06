@@ -1,6 +1,7 @@
 pub(crate) mod config;
 pub(crate) mod init;
 pub(crate) mod list;
+pub(crate) mod lsp;
 pub(crate) mod new;
 pub(crate) mod tags;
 pub(crate) mod tasks;
@@ -67,4 +68,23 @@ pub(crate) enum Command {
     /// [extra] settings override the root ones. Use --group to choose a group explicitly.
     #[command(verbatim_doc_comment)]
     New(new::Args),
+    /// Runs a language server on stdin and stdout, for navigating and linking notes in editors
+    ///
+    /// - Go to definition on a link opens the linked note
+    /// - References list the links to the note under the cursor, or to the linked note if the
+    ///   cursor is on a link
+    /// - Hover on a link shows the start of the linked note
+    /// - Completion in a link destination like `[text](` offers the paths of all notes
+    /// - Diagnostics warn about links to notes that don't exist in open notes
+    /// - Document symbols are the headings of a note, workspace symbols the notes by title
+    ///
+    /// Unsaved changes of open notes are taken into account.
+    ///
+    /// The notebook is the workspace folder of the editor. Neovim (0.11 or later) starts the
+    /// server for markdown files in notebooks with:
+    ///
+    ///   vim.lsp.config('zl', { cmd = { 'zl', 'lsp' }, filetypes = { 'markdown' }, root_markers = { '.zl' } })
+    ///   vim.lsp.enable('zl')
+    #[command(verbatim_doc_comment)]
+    Lsp(lsp::Args),
 }

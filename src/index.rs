@@ -17,7 +17,7 @@ use crate::{
 
 /// Bumped on every change to the schema or to what is stored in it, e.g. how links are resolved.
 /// A database with another version is rebuilt from scratch.
-const SCHEMA_VERSION: i32 = 4;
+const SCHEMA_VERSION: i32 = 5;
 
 const SCHEMA: &str = "
     CREATE TABLE notes (
@@ -41,6 +41,8 @@ const SCHEMA: &str = "
         source_id   INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
         position    INTEGER NOT NULL,       -- order in the note
         line        INTEGER NOT NULL,
+        span_start  INTEGER NOT NULL,       -- byte offsets of the whole link in the note
+        span_end    INTEGER NOT NULL,
         url         TEXT    NOT NULL,       -- as written, e.g. '../a.md#intro'
         -- Resolved note path, NULL for external links. Not a foreign key, as links may point to
         -- notes that don't exist (yet).
@@ -161,7 +163,7 @@ impl Index {
         }
 
         let mut statement = self.connection.prepare(
-            "SELECT source_id, url, line, target_path FROM links ORDER BY source_id, position",
+            "SELECT source_id, url, line, span_start, span_end, target_path FROM links ORDER BY source_id, position",
         )?;
         let rows = statement.query_map([], |row| {
             Ok((
@@ -169,7 +171,8 @@ impl Index {
                 Link {
                     url: row.get(1)?,
                     line: row.get::<_, i64>(2)? as usize,
-                    target: row.get::<_, Option<String>>(3)?.map(PathBuf::from),
+                    span: row.get::<_, i64>(3)? as usize..row.get::<_, i64>(4)? as usize,
+                    target: row.get::<_, Option<String>>(5)?.map(PathBuf::from),
                 },
             ))
         })?;
@@ -378,7 +381,7 @@ fn insert(
     }
 
     let mut insert_link = transaction.prepare_cached(
-        "INSERT INTO links (source_id, position, line, url, target_path) VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO links (source_id, position, line, span_start, span_end, url, target_path) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
     )?;
     for (position, link) in note.links.iter().enumerate() {
         let target = link.target.as_deref().map(path_key);
@@ -386,6 +389,8 @@ fn insert(
             id,
             position as i64,
             link.line as i64,
+            link.span.start as i64,
+            link.span.end as i64,
             link.url,
             target
         ])?;
