@@ -9,6 +9,17 @@ A minimal, still-in-progress Zettelkasten CLI. Docs/features incomplete.
 - From source: `cargo build --release`
 - Run: `zl --help`
 
+## Editor support
+`zl lsp` runs a language server: go to definition on a link opens the linked note, references list
+the links to a note, hover previews the linked note and completion offers notes to link to. Links to
+missing notes are reported as diagnostics, headings and notes are available as symbols. Neovim (0.11
+or later) starts it for markdown files in notebooks with:
+
+```lua
+vim.lsp.config('zl', { cmd = { 'zl', 'lsp' }, filetypes = { 'markdown' }, root_markers = { '.zl' } })
+vim.lsp.enable('zl')
+```
+
 ## Contributing
 - Issues/PRs welcome
 - Keep changes small, focused

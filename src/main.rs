@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod index;
+mod lsp;
 mod notes;
 mod paths;
 
@@ -27,5 +28,6 @@ fn main() -> anyhow::Result<()> {
         Command::List(args) => commands::list::run(args),
         Command::Tags(args) => commands::tags::run(args),
         Command::New(args) => commands::new::run(args),
+        Command::Lsp(args) => commands::lsp::run(args),
     }
 }

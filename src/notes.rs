@@ -1,13 +1,14 @@
 use std::{
     collections::HashMap,
     fs,
+    ops::Range,
     path::{Path, PathBuf},
 };
 
 use anyhow::{Context, anyhow};
 use markdown::{
     Constructs, ParseOptions,
-    mdast::{ListItem, Node},
+    mdast::{ListItem, Node, Root},
     to_mdast,
 };
 use percent_encoding::percent_decode_str;
@@ -30,13 +31,37 @@ pub(crate) struct Note {
     pub(crate) tasks: Vec<Task>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct Link {
     /// Target as written, e.g. `../a.md#intro`
     pub(crate) url: String,
     pub(crate) line: usize,
+    /// Byte offsets of the whole link in the note, e.g. of `[text](url)`
+    pub(crate) span: Range<usize>,
     /// Path of the linked note relative to the notebook root, `None` for links to anything else
     pub(crate) target: Option<PathBuf>,
+}
+
+/// A note as it is being edited in the language server. Unlike [`Note::load`] parsing never fails, so
+/// it also works while the frontmatter is invalid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Draft {
+    /// Like [`Note::title`], ignoring invalid frontmatter
+    pub(crate) title: String,
+    /// Headings with text, in document order
+    pub(crate) headings: Vec<Heading>,
+    pub(crate) links: Vec<Link>,
+    /// Byte offset of the content after the frontmatter
+    pub(crate) body_start: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Heading {
+    /// 1 for `#`, up to 6 for `######`
+    pub(crate) depth: u8,
+    pub(crate) text: String,
+    /// Byte offsets of the whole heading in the note
+    pub(crate) span: Range<usize>,
 }
 
 #[derive(Debug)]
@@ -58,21 +83,11 @@ impl Note {
 
         let frontmatter = Frontmatter::from_ast(&ast).context("Invalid frontmatter")?;
 
-        let title = frontmatter
-            .title
-            .or_else(|| first_heading(&ast))
-            .unwrap_or_else(|| {
-                path.file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned()
-            });
-
         Ok(Note {
+            title: title(frontmatter.title, &ast, &path),
             links: links(&ast, &path),
             tasks: tasks(&ast, &input),
             path,
-            title,
             tags: frontmatter.tags.map(Tags::into_vec).unwrap_or_default(),
         })
     }
@@ -165,15 +180,97 @@ fn links(ast: &Node, note_path: &Path) -> Vec<Link> {
         };
 
         if let Some(url) = url {
+            let position = node.position();
             links.push(Link {
                 url: url.clone(),
-                line: node.position().map_or(0, |position| position.start.line),
+                line: position.map_or(0, |position| position.start.line),
+                span: position.map_or(0..0, |position| position.start.offset..position.end.offset),
                 target: resolve_link(note_path, url),
             });
         }
     });
 
     links
+}
+
+impl Draft {
+    /// Parses the note at `note_path`, relative to the notebook root, with content `input`
+    pub(crate) fn parse(note_path: &Path, input: &str) -> Self {
+        // Markdown without MDX constructs always parses, errors are only possible for MDX
+        let ast = to_mdast(input, &parse_options()).unwrap_or_else(|_| {
+            Node::Root(Root {
+                children: Vec::new(),
+                position: None,
+            })
+        });
+
+        let frontmatter = Frontmatter::from_ast(&ast).unwrap_or_default();
+        let body_start = match ast.children().and_then(|children| children.first()) {
+            Some(node @ (Node::Yaml(_) | Node::Toml(_))) => {
+                node.position().map_or(0, |position| position.end.offset)
+            }
+            _ => 0,
+        };
+
+        Draft {
+            title: title(frontmatter.title, &ast, note_path),
+            headings: headings(&ast),
+            links: links(&ast, note_path),
+            body_start,
+        }
+    }
+}
+
+fn headings(ast: &Node) -> Vec<Heading> {
+    let mut headings = Vec::new();
+    walk(ast, &mut |node| {
+        if let Node::Heading(heading) = node
+            && let Some(position) = &heading.position
+        {
+            let text = node.to_string();
+            if !text.trim().is_empty() {
+                headings.push(Heading {
+                    depth: heading.depth,
+                    text,
+                    span: position.start.offset..position.end.offset,
+                });
+            }
+        }
+    });
+
+    headings
+}
+
+/// URL of a link from the note at `note_path` to the note at `target`, both relative to the notebook
+/// root: relative to the folder of `note_path` and percent-encoded where markdown requires it, so
+/// [`resolve_link`] resolves it to `target` again.
+pub(crate) fn link_url(note_path: &Path, target: &Path) -> String {
+    let from: Vec<_> = note_path.parent().into_iter().flatten().collect();
+    let to: Vec<_> = target.iter().collect();
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+
+    let segments = std::iter::repeat_n("..".to_string(), from.len() - common).chain(
+        to[common..]
+            .iter()
+            .map(|segment| encode_url_segment(&segment.to_string_lossy())),
+    );
+
+    segments.collect::<Vec<_>>().join("/")
+}
+
+/// Percent-encodes the characters that would end a link destination or change its meaning. Other
+/// characters, including non-ASCII ones, stay readable.
+fn encode_url_segment(segment: &str) -> String {
+    segment
+        .chars()
+        .map(|c| match c {
+            ' ' | '%' | '(' | ')' | '<' | '>' | '[' | ']' | '#' | '?' | '\\' | '`' => {
+                format!("%{:02X}", c as u32)
+            }
+            c if c.is_ascii_control() => format!("%{:02X}", c as u32),
+            c => c.to_string(),
+        })
+        .collect()
 }
 
 /// Path of the note `url` links to, relative to the notebook root, or `None` if it links to anything
@@ -255,6 +352,19 @@ fn walk<'a>(node: &'a Node, visit: &mut impl FnMut(&'a Node)) {
     for child in node.children().into_iter().flatten() {
         walk(child, visit);
     }
+}
+
+/// The frontmatter title, otherwise the first level 1 heading, otherwise the file name of the note
+fn title(frontmatter_title: Option<String>, ast: &Node, note_path: &Path) -> String {
+    frontmatter_title
+        .or_else(|| first_heading(ast))
+        .unwrap_or_else(|| {
+            note_path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
+        })
 }
 
 fn first_heading(node: &Node) -> Option<String> {
@@ -341,6 +451,80 @@ mod tests {
         );
         assert_eq!(resolve("a.md", "b#intro"), Some("b.md".into()));
         assert_eq!(resolve("a.md", "dir/"), None);
+    }
+
+    #[test]
+    fn keeps_spans_of_links() {
+        let input = "[a](a.md) <https://example.com>\n\n[b][ref]\n\n[ref]: b.md\n";
+        let spans: Vec<_> = Draft::parse(Path::new("n.md"), input)
+            .links
+            .into_iter()
+            .map(|link| (link.url, &input[link.span]))
+            .collect();
+
+        assert_eq!(
+            spans,
+            [
+                ("a.md".to_string(), "[a](a.md)"),
+                ("https://example.com".to_string(), "<https://example.com>"),
+                ("b.md".to_string(), "[b][ref]"),
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_drafts_despite_invalid_frontmatter() {
+        let input = "---\ntags: [\n---\n# A\n[a](a.md)\n";
+        let draft = Draft::parse(Path::new("n.md"), input);
+
+        assert_eq!(draft.title, "A");
+        assert_eq!(draft.links[0].target, Some("a.md".into()));
+        assert_eq!(&input[draft.body_start..], "\n# A\n[a](a.md)\n");
+    }
+
+    #[test]
+    fn parses_titles_and_headings_of_drafts() {
+        let input = "---\ntitle: Title\n---\n# One\n\n## Two\n\n#\n\n### Three *x*\n";
+        let draft = Draft::parse(Path::new("dir/n.md"), input);
+
+        assert_eq!(draft.title, "Title");
+        let headings: Vec<_> = draft
+            .headings
+            .iter()
+            .map(|heading| {
+                (
+                    heading.depth,
+                    heading.text.as_str(),
+                    &input[heading.span.clone()],
+                )
+            })
+            .collect();
+        assert_eq!(
+            headings,
+            [
+                (1, "One", "# One"),
+                (2, "Two", "## Two"),
+                (3, "Three x", "### Three *x*"),
+            ]
+        );
+
+        assert_eq!(Draft::parse(Path::new("dir/n.md"), "text").title, "n");
+        assert_eq!(Draft::parse(Path::new("n.md"), "text").body_start, 0);
+    }
+
+    #[test]
+    fn builds_urls_that_resolve_to_the_target() {
+        for (note, target, url) in [
+            ("a.md", "b.md", "b.md"),
+            ("a.md", "dir/b.md", "dir/b.md"),
+            ("dir/a.md", "b.md", "../b.md"),
+            ("dir/sub/a.md", "dir/other/b.md", "../other/b.md"),
+            ("a.md", "Grüne Notiz (1).md", "Grüne%20Notiz%20%281%29.md"),
+            ("a.md", "50% #1?.md", "50%25%20%231%3F.md"),
+        ] {
+            assert_eq!(link_url(Path::new(note), Path::new(target)), url);
+            assert_eq!(resolve(note, url), Some(target.into()), "{url}");
+        }
     }
 
     #[test]
