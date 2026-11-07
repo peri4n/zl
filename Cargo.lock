@@ -1497,6 +1497,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "fastrand",
  "globset",
  "lsp-server",
  "lsp-types",

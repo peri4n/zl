@@ -73,6 +73,10 @@ pub(crate) struct NoteSettings<'a> {
     pub(crate) group: Option<&'a str>,
     pub(crate) template: &'a str,
     pub(crate) title: &'a str,
+    pub(crate) filename: &'a str,
+    pub(crate) extension: &'a str,
+    pub(crate) id_charset: &'a str,
+    pub(crate) id_length: usize,
     pub(crate) extra: BTreeMap<&'a str, &'a toml::Value>,
 }
 
@@ -110,11 +114,11 @@ impl Config {
         }
     }
 
-    /// Settings for a new note at `note_path`, taken from the group named `group`, otherwise from the
-    /// group whose paths match the note's folder. Settings the group doesn't set come from the root config.
+    /// Settings for a new note in `folder`, taken from the group named `group`, otherwise from the
+    /// group whose paths match the folder. Settings the group doesn't set come from the root config.
     pub(crate) fn note_settings(
         &self,
-        note_path: &Path,
+        folder: &Path,
         group: Option<&str>,
     ) -> anyhow::Result<NoteSettings<'_>> {
         let group = match group {
@@ -125,13 +129,17 @@ impl Config {
                     self.group_names().join(", ")
                 )
             })?),
-            None => self.matching_group(note_path)?,
+            None => self.matching_group(folder)?,
         };
 
         let mut settings = NoteSettings {
             group: None,
             template: &self.note.default_template,
             title: &self.note.default_title,
+            filename: &self.note.filename,
+            extension: &self.note.extension,
+            id_charset: &self.note.id_charset,
+            id_length: self.note.id_length,
             extra: self
                 .extra
                 .iter()
@@ -151,6 +159,18 @@ impl Config {
                 .default_title
                 .as_deref()
                 .unwrap_or(settings.title);
+            settings.filename = group.note.filename.as_deref().unwrap_or(settings.filename);
+            settings.extension = group
+                .note
+                .extension
+                .as_deref()
+                .unwrap_or(settings.extension);
+            settings.id_charset = group
+                .note
+                .id_charset
+                .as_deref()
+                .unwrap_or(settings.id_charset);
+            settings.id_length = group.note.id_length.unwrap_or(settings.id_length);
             settings
                 .extra
                 .extend(group.extra.iter().map(|(key, value)| (key.as_str(), value)));
@@ -163,14 +183,13 @@ impl Config {
         &self.list.format
     }
 
-    fn matching_group(&self, note_path: &Path) -> anyhow::Result<Option<(&String, &GroupConfig)>> {
-        let note_path = normalize(note_path);
-        let folder = note_path.parent().unwrap_or(Path::new(""));
+    fn matching_group(&self, folder: &Path) -> anyhow::Result<Option<(&String, &GroupConfig)>> {
+        let folder = normalize(folder);
 
         let matches: Vec<_> = self
             .group
             .iter()
-            .filter(|(_, group)| group.matcher.is_match(folder))
+            .filter(|(_, group)| group.matcher.is_match(&folder))
             .collect();
 
         match matches.as_slice() {
@@ -179,8 +198,8 @@ impl Config {
             _ => {
                 let names: Vec<_> = matches.iter().map(|(name, _)| name.as_str()).collect();
                 bail!(
-                    "{} matches the paths of several groups ({}), choose one with --group",
-                    note_path.display(),
+                    "Folder `{}` matches the paths of several groups ({}), choose one with --group",
+                    folder.display(),
                     names.join(", ")
                 )
             }
@@ -198,6 +217,19 @@ struct NoteConfig {
     default_template: String,
 
     default_title: String,
+
+    /// File name of new notes without extension, a Tera template with the variables of the note
+    /// templates and `random_id`. `/` creates folders, e.g. "{{ date }}/{{ title | slug }}".
+    filename: String,
+
+    /// Extension of new notes
+    extension: String,
+
+    /// Characters of `random_id`: alphanum, hex, letters, numbers, or the characters themselves
+    id_charset: String,
+
+    /// Number of characters of `random_id`
+    id_length: usize,
 }
 
 impl Default for NoteConfig {
@@ -205,6 +237,10 @@ impl Default for NoteConfig {
         NoteConfig {
             default_template: "default".to_string(),
             default_title: "Untitled".to_string(),
+            filename: "{{ id }}".to_string(),
+            extension: "md".to_string(),
+            id_charset: "alphanum".to_string(),
+            id_length: 4,
         }
     }
 }
@@ -233,6 +269,18 @@ struct GroupNoteConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     default_title: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filename: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    extension: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id_charset: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id_length: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

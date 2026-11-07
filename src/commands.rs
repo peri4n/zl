@@ -53,16 +53,31 @@ pub(crate) enum Command {
     /// Templates are read from `.zl/templates/<name>.md` and rendered with Tera.
     /// The following variables are available in every template:
     ///
-    ///   title     Title of the note (--title or note.default_title)
-    ///   id        Zettel ID derived from the creation time, e.g. 20261031143005
-    ///   date      Creation date, e.g. 2026-10-31
-    ///   time      Creation time, e.g. 14:30
-    ///   datetime  Creation timestamp in RFC 3339, e.g. 2026-10-31T14:30:05+01:00
-    ///   filename  File name of the note without extension
-    ///   extra     Values of [extra] in the config, merged with the [extra] of the note's group,
-    ///             e.g. {{ extra.author }}
+    ///   title      Title of the note (--title or note.default_title)
+    ///   id         Zettel ID derived from the creation time, e.g. 20261031143005
+    ///   random_id  Random ID of note.id_length characters of note.id_charset, e.g. 3f9a
+    ///   date       Creation date, e.g. 2026-10-31
+    ///   time       Creation time, e.g. 14:30
+    ///   datetime   Creation timestamp in RFC 3339, e.g. 2026-10-31T14:30:05+01:00
+    ///   filename   File name of the note without extension
+    ///   extra      Values of [extra] in the config, merged with the [extra] of the note's group,
+    ///              e.g. {{ extra.author }}
     ///
-    /// Additional variables can be passed with --var KEY=VALUE.
+    /// Additional variables can be passed with --var KEY=VALUE. The `slug` filter turns text into
+    /// a file name, e.g. {{ title | slug }} is `retrieval-practice` for "Retrieval Practice!".
+    ///
+    /// Given a folder, the note is named by the Tera template note.filename, which has the same
+    /// variables except `filename`, followed by note.extension. Names that are taken are numbered.
+    /// For example, in .zl/config.toml:
+    ///
+    ///   [note]
+    ///   filename = "{{ random_id }}"   # the default is "{{ id }}"
+    ///
+    ///   [group.journal]
+    ///   paths = ["journal/**"]
+    ///
+    ///   [group.journal.note]
+    ///   filename = "{{ date }}"        # zl new journal/ creates journal/2026-10-31.md
     ///
     /// If the note's folder matches the paths of a group in the config, the group's [note] and
     /// [extra] settings override the root ones. Use --group to choose a group explicitly.

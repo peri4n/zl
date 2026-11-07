@@ -1,25 +1,37 @@
 use std::{
-    collections::BTreeMap,
     fs,
     io::{ErrorKind, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::Command,
 };
 
 use anyhow::{Context as _, anyhow, bail};
 use chrono::{Local, SecondsFormat};
-use tera::{Context, Tera};
+use tera::{Context, Kwargs, State, Tera};
 
-use crate::config::{Config, ConfigDir};
+use crate::{
+    config::{Config, ConfigDir, NoteSettings},
+    paths::normalize,
+};
 
 /// Variables provided to every template, which therefore can't be set with --var
 const BUILTIN_VARIABLES: &[&str] = &[
-    "title", "id", "date", "time", "datetime", "filename", "extra",
+    "title",
+    "id",
+    "random_id",
+    "date",
+    "time",
+    "datetime",
+    "filename",
+    "extra",
 ];
 
 #[derive(clap::Args, Debug)]
 pub(crate) struct Args {
-    /// Path of the new markdown file
+    /// Path of the new note, or a folder to create it in, named by note.filename of the folder's
+    /// group. Folders are existing directories and paths ending with `/`. Paths without extension
+    /// get note.extension.
+    #[arg(default_value = ".")]
     path: String,
 
     /// Template of the new markdown file [default: note.default_template of the note's group,
@@ -47,15 +59,22 @@ pub(crate) struct Args {
 
 pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     let config = Config::load()?;
-    let path = Path::new(&args.path);
     // Before creating the note, so it isn't created if it can't be opened
     let editor = args.edit.then(editor).transpose()?;
 
-    let settings = config.note_settings(path, args.group.as_deref())?;
+    let target = Path::new(&args.path);
+    let is_folder = args.path.ends_with('/') || target.is_dir();
+    let folder = match is_folder {
+        true => target,
+        false => target.parent().unwrap_or(Path::new("")),
+    };
+
+    let settings = config.note_settings(folder, args.group.as_deref())?;
     let template = args.template.as_deref().unwrap_or(settings.template);
     let title = args.title.as_deref().unwrap_or(settings.title);
 
     let mut templates = Tera::new();
+    templates.register_filter("slug", |text: &str, _: Kwargs, _: &State| slug(text));
     templates
         .load_from_glob(
             &ConfigDir::current()
@@ -65,7 +84,21 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
         )
         .context("Failed to load templates")?;
 
-    let context = build_context(path, title, &settings.extra, &args.vars)?;
+    let mut context = build_context(title, &settings, &args.vars)?;
+    let path = match is_folder {
+        true => generate_path(&templates, &context, folder, &settings)?,
+        false if target.extension().is_none() => normalize(&with_extension(
+            &target.to_string_lossy(),
+            settings.extension,
+        )),
+        false => normalize(target),
+    };
+    let filename = path
+        .file_stem()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
+    context.insert("filename", &filename);
+
     let content = templates
         .render(&format!("{}.md", template), &context)
         .with_context(|| format!("Failed to render template `{}`", template))?;
@@ -79,7 +112,7 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     let mut file = match fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(path)
+        .open(&path)
     {
         Ok(file) => file,
         Err(e) if e.kind() == ErrorKind::AlreadyExists => {
@@ -102,7 +135,7 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     }
 
     if let Some(editor) = editor {
-        open_in_editor(&editor, path)?;
+        open_in_editor(&editor, &path)?;
     }
 
     Ok(())
@@ -138,25 +171,23 @@ fn open_in_editor(editor: &[String], path: &Path) -> anyhow::Result<()> {
 }
 
 fn build_context(
-    path: &Path,
     title: &str,
-    extra: &BTreeMap<&str, &toml::Value>,
+    settings: &NoteSettings,
     vars: &[(String, String)],
 ) -> anyhow::Result<Context> {
     let now = Local::now();
-    let filename = path
-        .file_stem()
-        .map(|s| s.to_string_lossy())
-        .unwrap_or_default();
 
     let mut context = Context::new();
     context.insert("title", title);
     context.insert("id", &now.format("%Y%m%d%H%M%S").to_string());
+    context.insert(
+        "random_id",
+        &random_id(settings.id_charset, settings.id_length)?,
+    );
     context.insert("date", &now.format("%Y-%m-%d").to_string());
     context.insert("time", &now.format("%H:%M").to_string());
     context.insert("datetime", &now.to_rfc3339_opts(SecondsFormat::Secs, false));
-    context.insert("filename", &filename);
-    context.insert("extra", extra);
+    context.insert("extra", &settings.extra);
 
     for (key, value) in vars {
         if BUILTIN_VARIABLES.contains(&key.as_str()) {
@@ -169,6 +200,85 @@ fn build_context(
     Ok(context)
 }
 
+/// Path of a new note in `folder` named by the rendered `settings.filename`, numbered like
+/// `name-2` if a note with that name exists already
+fn generate_path(
+    templates: &Tera,
+    context: &Context,
+    folder: &Path,
+    settings: &NoteSettings,
+) -> anyhow::Result<PathBuf> {
+    let name = templates
+        .render_str(settings.filename, context, false)
+        .with_context(|| format!("Failed to render note.filename `{}`", settings.filename))?;
+    let name = name.trim();
+
+    // The name may contain folders, but must stay in `folder`
+    let relative = normalize(Path::new(name));
+    if name.is_empty() || relative.has_root() || relative.starts_with("..") {
+        bail!(
+            "Invalid file name `{}` rendered from note.filename `{}`",
+            name,
+            settings.filename
+        );
+    }
+
+    let path = (1..)
+        .map(|n| {
+            let name = match n {
+                1 => name.to_string(),
+                n => format!("{name}-{n}"),
+            };
+            normalize(&folder.join(with_extension(&name, settings.extension)))
+        })
+        .find(|path| !path.exists())
+        .expect("some number is unused");
+
+    Ok(path)
+}
+
+/// `name` with `extension`, which may start with a dot
+fn with_extension(name: &str, extension: &str) -> PathBuf {
+    match extension.trim_start_matches('.') {
+        "" => PathBuf::from(name),
+        extension => PathBuf::from(format!("{name}.{extension}")),
+    }
+}
+
+/// `length` random characters of `charset`: alphanum, hex, letters, numbers, or the characters
+/// themselves
+fn random_id(charset: &str, length: usize) -> anyhow::Result<String> {
+    let chars: Vec<char> = match charset {
+        "alphanum" => ('a'..='z').chain('0'..='9').collect(),
+        "hex" => ('0'..='9').chain('a'..='f').collect(),
+        "letters" => ('a'..='z').collect(),
+        "numbers" => ('0'..='9').collect(),
+        chars => chars.chars().collect(),
+    };
+    if chars.is_empty() {
+        bail!("note.id_charset is empty");
+    }
+
+    Ok((0..length)
+        .map(|_| chars[fastrand::usize(..chars.len())])
+        .collect())
+}
+
+/// `text` for file names and URLs: lowercase letters and digits, everything else replaced by
+/// single `-`, e.g. `retrieval-practice` for `Retrieval Practice!`
+fn slug(text: &str) -> String {
+    let mut slug = String::new();
+    for c in text.chars().flat_map(char::to_lowercase) {
+        if c.is_alphanumeric() {
+            slug.push(c);
+        } else if !slug.is_empty() && !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+
+    slug.trim_end_matches('-').to_string()
+}
+
 fn parse_key_value(s: &str) -> Result<(String, String), String> {
     let (key, value) = s
         .split_once('=')
@@ -179,4 +289,25 @@ fn parse_key_value(s: &str) -> Result<(String, String), String> {
     }
 
     Ok((key.to_string(), value.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slugifies_text() {
+        assert_eq!(slug("Retrieval Practice!"), "retrieval-practice");
+        assert_eq!(slug("  Grüße, Welt -- 2026 "), "grüße-welt-2026");
+        assert_eq!(slug("?!"), "");
+    }
+
+    #[test]
+    fn generates_random_ids() {
+        let id = random_id("hex", 8).unwrap();
+        assert_eq!(id.len(), 8);
+        assert!(id.chars().all(|c| c.is_ascii_hexdigit()), "{id}");
+        assert_eq!(random_id("x", 3).unwrap(), "xxx");
+        assert!(random_id("", 3).is_err());
+    }
 }

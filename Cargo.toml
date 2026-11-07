@@ -15,6 +15,7 @@ exclude = ["/.github", "/.envrc", "/flake.nix", "/flake.lock", "/logo.png", "/re
 anyhow = "1.0.104"
 chrono = "0.4.45"
 clap = { version = "4.6.7", features = ["derive", "env"] }
+fastrand = "2.5.0"
 globset = "0.4.21"
 lsp-server = "0.10.0"
 lsp-types = "0.97.0"

@@ -178,6 +178,93 @@ fn new_renders_template_with_groups() {
 }
 
 #[test]
+fn new_names_notes_by_the_scheme_of_their_group() {
+    let notebook = Notebook::empty();
+    notebook.ok(&["init"]);
+    notebook.write(
+        ".zl/config.toml",
+        r#"
+[note]
+filename = "{{ title | slug }}"
+
+[group.journal]
+paths = ["journal/**"]
+
+[group.journal.note]
+filename = "{{ date }}"
+default_template = "daily"
+
+[group.inbox]
+paths = ["inbox"]
+
+[group.inbox.note]
+filename = "{{ random_id }}"
+id_charset = "hex"
+id_length = 6
+extension = "markdown"
+
+[group.escaping]
+paths = []
+
+[group.escaping.note]
+filename = "../{{ id }}"
+"#,
+    );
+    notebook.write(
+        ".zl/templates/default.md",
+        "# {{ title }} ({{ filename }})\n",
+    );
+    notebook.write(".zl/templates/daily.md", "daily {{ filename }}\n");
+
+    // The notebook root by default, numbered if the name is taken
+    let title = ["new", "--title", "Retrieval Practice!"];
+    assert_eq!(
+        notebook.ok(&title),
+        "Created retrieval-practice.md from template `default`\n"
+    );
+    assert_eq!(
+        notebook.read("retrieval-practice.md"),
+        "# Retrieval Practice! (retrieval-practice)\n"
+    );
+    assert_eq!(
+        notebook.ok(&title),
+        "Created retrieval-practice-2.md from template `default`\n"
+    );
+
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    assert_eq!(
+        notebook.ok(&["new", "journal/"]),
+        format!("Created journal/{today}.md from template `daily` of group `journal`\n")
+    );
+    assert_eq!(
+        notebook.read(&format!("journal/{today}.md")),
+        format!("daily {today}\n")
+    );
+
+    // Existing folders don't need a trailing `/`
+    fs::create_dir(notebook.path().join("inbox")).unwrap();
+    let stdout = notebook.ok(&["new", "inbox"]);
+    let name = stdout
+        .strip_prefix("Created inbox/")
+        .and_then(|rest| rest.split_once(".markdown from template `default` of group `inbox`\n"))
+        .map(|(id, _)| id)
+        .unwrap_or_else(|| panic!("{stdout}"));
+    assert!(
+        name.len() == 6 && name.chars().all(|c| c.is_ascii_hexdigit()),
+        "{name}"
+    );
+
+    // Paths of notes keep their name and get the extension if they have none
+    assert_eq!(
+        notebook.ok(&["new", "ideas/Some Idea"]),
+        "Created ideas/Some Idea.md from template `default`\n"
+    );
+
+    let (_, stderr) = notebook.fails(&["new", "--group", "escaping"]);
+    assert!(stderr.contains("Invalid file name `../"), "{stderr}");
+}
+
+#[test]
 fn new_opens_notes_in_the_editor() {
     let notebook = Notebook::empty();
     notebook.ok(&["init"]);
