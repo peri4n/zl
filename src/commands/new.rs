@@ -3,9 +3,10 @@ use std::{
     fs,
     io::{ErrorKind, Write},
     path::Path,
+    process::Command,
 };
 
-use anyhow::{Context as _, bail};
+use anyhow::{Context as _, anyhow, bail};
 use chrono::{Local, SecondsFormat};
 use tera::{Context, Tera};
 
@@ -38,11 +39,17 @@ pub(crate) struct Args {
     /// Additional template variable, can be repeated
     #[arg(long = "var", value_name = "KEY=VALUE", value_parser = parse_key_value)]
     vars: Vec<(String, String)>,
+
+    /// Open the new note in $VISUAL, otherwise $EDITOR, e.g. `nvim` or `code --wait`
+    #[arg(short, long)]
+    edit: bool,
 }
 
 pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
     let config = Config::load()?;
     let path = Path::new(&args.path);
+    // Before creating the note, so it isn't created if it can't be opened
+    let editor = args.edit.then(editor).transpose()?;
 
     let settings = config.note_settings(path, args.group.as_deref())?;
     let template = args.template.as_deref().unwrap_or(settings.template);
@@ -92,6 +99,39 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
             group
         ),
         None => println!("Created {} from template `{}`", path.display(), template),
+    }
+
+    if let Some(editor) = editor {
+        open_in_editor(&editor, path)?;
+    }
+
+    Ok(())
+}
+
+/// The editor command from $VISUAL, otherwise $EDITOR: the program and its arguments
+fn editor() -> anyhow::Result<Vec<String>> {
+    let command = ["VISUAL", "EDITOR"]
+        .into_iter()
+        .filter_map(|variable| std::env::var(variable).ok())
+        .find(|command| !command.trim().is_empty())
+        .ok_or_else(|| anyhow!("Set $VISUAL or $EDITOR to open the note with --edit"))?;
+
+    Ok(command.split_whitespace().map(str::to_string).collect())
+}
+
+/// Opens the note at `path` with `editor` and waits until it's closed. The path is absolute, as it's
+/// relative to the notebook, which isn't the working directory of the user with `-C`.
+fn open_in_editor(editor: &[String], path: &Path) -> anyhow::Result<()> {
+    let path = std::env::current_dir()?.join(path);
+    let (program, arguments) = editor.split_first().expect("editor commands aren't empty");
+
+    let status = Command::new(program)
+        .args(arguments)
+        .arg(&path)
+        .status()
+        .with_context(|| format!("Failed to start editor `{}`", editor.join(" ")))?;
+    if !status.success() {
+        bail!("Editor `{}` failed: {}", editor.join(" "), status);
     }
 
     Ok(())

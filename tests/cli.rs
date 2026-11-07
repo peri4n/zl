@@ -62,12 +62,17 @@ impl Notebook {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_zl"))
+        self.command(args).output().unwrap()
+    }
+
+    /// zl with `args`, run in the notebook
+    fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_zl"));
+        command
             .args(args)
             .current_dir(self.path())
-            .env_remove("ZL_NOTEBOOK_DIR")
-            .output()
-            .unwrap()
+            .env_remove("ZL_NOTEBOOK_DIR");
+        command
     }
 
     /// Runs zl, expecting success, and returns its stdout
@@ -170,6 +175,52 @@ fn new_renders_template_with_groups() {
     assert!(stderr.contains("Note already exists"), "{stderr}");
     let (_, stderr) = notebook.fails(&["new", "b.md", "--var", "title=x"]);
     assert!(stderr.contains("built-in variable `title`"), "{stderr}");
+}
+
+#[test]
+fn new_opens_notes_in_the_editor() {
+    let notebook = Notebook::empty();
+    notebook.ok(&["init"]);
+    notebook.write(".zl/templates/default.md", "# {{ title }}\n");
+    let root = notebook.path().canonicalize().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+
+    // $VISUAL wins over $EDITOR, its arguments are kept, the path is absolute even with -C
+    let output = notebook
+        .command(&["-C", root.to_str().unwrap(), "new", "dir/a.md", "--edit"])
+        .current_dir(outside.path())
+        .env("VISUAL", "echo opened")
+        .env("EDITOR", "false")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!(
+            "Created dir/a.md from template `default`\nopened {}\n",
+            root.join("dir/a.md").display()
+        )
+    );
+
+    let output = notebook
+        .command(&["new", "b.md", "-e"])
+        .env_remove("VISUAL")
+        .env("EDITOR", "false")
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Editor `false` failed"));
+    assert!(notebook.path().join("b.md").exists());
+
+    // Without editor the note isn't created
+    let output = notebook
+        .command(&["new", "c.md", "-e"])
+        .env_remove("VISUAL")
+        .env("EDITOR", " ")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Set $VISUAL or $EDITOR"));
+    assert!(!notebook.path().join("c.md").exists());
 }
 
 #[test]
