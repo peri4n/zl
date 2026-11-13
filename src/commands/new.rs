@@ -75,6 +75,7 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
 
     let mut templates = Tera::new();
     templates.register_filter("slug", |text: &str, _: Kwargs, _: &State| slug(text));
+    templates.register_filter("date", tera_contrib::dates::date);
     templates
         .load_from_glob(
             &ConfigDir::current()

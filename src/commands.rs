@@ -65,6 +65,8 @@ pub(crate) enum Command {
     ///
     /// Additional variables can be passed with --var KEY=VALUE. The `slug` filter turns text into
     /// a file name, e.g. {{ title | slug }} is `retrieval-practice` for "Retrieval Practice!".
+    /// The `date` filter formats dates with strftime, e.g. {{ datetime | date(format="%A") }} is
+    /// `Saturday` for 2026-10-31.
     ///
     /// Given a folder, the note is named by the Tera template note.filename, which has the same
     /// variables except `filename`, followed by note.extension. Names that are taken are numbered.

@@ -156,13 +156,13 @@ fn new_renders_template_with_groups() {
     );
     notebook.write(
         ".zl/templates/default.md",
-        "default {{ title }} {{ filename }} {{ extra.author }} {{ tags }}\n",
+        "default {{ title }} {{ filename }} {{ extra.author }} {{ tags }} {{ \"2026-10-31\" | date(format=\"%A\") }}\n",
     );
     notebook.write(".zl/templates/daily.md", "daily {{ title }}\n");
 
     let stdout = notebook.ok(&["new", "a.md", "--title", "A", "--var", "tags=x"]);
     assert_eq!(stdout, "Created a.md from template `default`\n");
-    assert_eq!(notebook.read("a.md"), "default A a me x\n");
+    assert_eq!(notebook.read("a.md"), "default A a me x Saturday\n");
 
     let stdout = notebook.ok(&["new", "journal/2026/today.md"]);
     assert_eq!(
