@@ -52,7 +52,8 @@ pub(crate) struct Args {
     #[arg(long = "var", value_name = "KEY=VALUE", value_parser = parse_key_value)]
     vars: Vec<(String, String)>,
 
-    /// Open the new note in $VISUAL, otherwise $EDITOR, e.g. `nvim` or `code --wait`
+    /// Open the new note, or the existing one, in $VISUAL, otherwise $EDITOR, e.g. `nvim` or
+    /// `code --wait`
     #[arg(short, long)]
     edit: bool,
 }
@@ -94,6 +95,16 @@ pub(crate) fn run(args: &Args) -> anyhow::Result<()> {
         )),
         false => normalize(target),
     };
+
+    // Before rendering the template, so a broken template doesn't keep the note from being opened
+    if path.is_file() {
+        println!("Using existing note {}", path.display());
+        if let Some(editor) = editor {
+            open_in_editor(&editor, &path)?;
+        }
+        return Ok(());
+    }
+
     let filename = path
         .file_stem()
         .map(|s| s.to_string_lossy())
@@ -201,8 +212,7 @@ fn build_context(
     Ok(context)
 }
 
-/// Path of a new note in `folder` named by the rendered `settings.filename`, numbered like
-/// `name-2` if a note with that name exists already
+/// Path of a new note in `folder` named by the rendered `settings.filename`
 fn generate_path(
     templates: &Tera,
     context: &Context,
@@ -224,18 +234,9 @@ fn generate_path(
         );
     }
 
-    let path = (1..)
-        .map(|n| {
-            let name = match n {
-                1 => name.to_string(),
-                n => format!("{name}-{n}"),
-            };
-            normalize(&folder.join(with_extension(&name, settings.extension)))
-        })
-        .find(|path| !path.exists())
-        .expect("some number is unused");
-
-    Ok(path)
+    Ok(normalize(
+        &folder.join(with_extension(name, settings.extension)),
+    ))
 }
 
 /// `name` with `extension`, which may start with a dot

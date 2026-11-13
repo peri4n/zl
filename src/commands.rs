@@ -69,8 +69,7 @@ pub(crate) enum Command {
     /// `Saturday` for 2026-10-31.
     ///
     /// Given a folder, the note is named by the Tera template note.filename, which has the same
-    /// variables except `filename`, followed by note.extension. Names that are taken are numbered.
-    /// For example, in .zl/config.toml:
+    /// variables except `filename`, followed by note.extension. For example, in .zl/config.toml:
     ///
     ///   [note]
     ///   filename = "{{ random_id }}"   # the default is "{{ id }}"
@@ -83,6 +82,9 @@ pub(crate) enum Command {
     ///
     /// If the note's folder matches the paths of a group in the config, the group's [note] and
     /// [extra] settings override the root ones. Use --group to choose a group explicitly.
+    ///
+    /// If the note exists already, it's used instead and opened with --edit, so running
+    /// `zl new journal/ --edit` again later that day opens journal/2026-10-31.md.
     #[command(verbatim_doc_comment)]
     New(new::Args),
     /// Runs a language server on stdin and stdout, for navigating and linking notes in editors

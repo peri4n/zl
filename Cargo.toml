@@ -1,7 +1,7 @@
 [package]
 name = "zl"
 authors = ["Fabian Bull<contact@fbull.de>"]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "A minimal Zettelkasten CLI for markdown notes"
 license = "GPL-3.0-or-later"

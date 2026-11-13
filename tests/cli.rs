@@ -171,8 +171,11 @@ fn new_renders_template_with_groups() {
     );
     assert_eq!(notebook.read("journal/2026/today.md"), "daily Untitled\n");
 
-    let (_, stderr) = notebook.fails(&["new", "a.md", "--var", "tags=x"]);
-    assert!(stderr.contains("Note already exists"), "{stderr}");
+    // Existing notes are kept
+    let stdout = notebook.ok(&["new", "a.md", "--title", "B"]);
+    assert_eq!(stdout, "Using existing note a.md\n");
+    assert_eq!(notebook.read("a.md"), "default A a me x Saturday\n");
+
     let (_, stderr) = notebook.fails(&["new", "b.md", "--var", "title=x"]);
     assert!(stderr.contains("built-in variable `title`"), "{stderr}");
 }
@@ -216,7 +219,7 @@ filename = "../{{ id }}"
     );
     notebook.write(".zl/templates/daily.md", "daily {{ filename }}\n");
 
-    // The notebook root by default, numbered if the name is taken
+    // The notebook root by default, the existing note if the name is taken
     let title = ["new", "--title", "Retrieval Practice!"];
     assert_eq!(
         notebook.ok(&title),
@@ -228,8 +231,9 @@ filename = "../{{ id }}"
     );
     assert_eq!(
         notebook.ok(&title),
-        "Created retrieval-practice-2.md from template `default`\n"
+        "Using existing note retrieval-practice.md\n"
     );
+    assert!(!notebook.path().join("retrieval-practice-2.md").exists());
 
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     assert_eq!(
@@ -239,6 +243,10 @@ filename = "../{{ id }}"
     assert_eq!(
         notebook.read(&format!("journal/{today}.md")),
         format!("daily {today}\n")
+    );
+    assert_eq!(
+        notebook.ok(&["new", "journal/"]),
+        format!("Using existing note journal/{today}.md\n")
     );
 
     // Existing folders don't need a trailing `/`
@@ -288,6 +296,23 @@ fn new_opens_notes_in_the_editor() {
             root.join("dir/a.md").display()
         )
     );
+
+    // Existing notes are opened as they are
+    notebook.write("dir/a.md", "# Changed\n");
+    let output = notebook
+        .command(&["new", "dir/a.md", "--edit"])
+        .env("VISUAL", "echo opened")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!(
+            "Using existing note dir/a.md\nopened {}\n",
+            root.join("dir/a.md").display()
+        )
+    );
+    assert_eq!(notebook.read("dir/a.md"), "# Changed\n");
 
     let output = notebook
         .command(&["new", "b.md", "-e"])
